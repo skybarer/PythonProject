@@ -1,5 +1,6 @@
 """
-Git repository management service
+Git repository management service - FIXED VERSION
+Key fix: Respects the branch parameter instead of forcing master
 """
 
 import subprocess
@@ -90,7 +91,10 @@ class GitService:
         return []
 
     def clone_or_update_repo(self, repo_url: str, repo_path: Path, branch: str = "master") -> bool:
-        """Clone repository or update if exists, switch to specified branch"""
+        """
+        Clone repository or update if exists, switch to specified branch
+        FIXED: Now respects the branch parameter instead of forcing master
+        """
         try:
             if repo_path.exists():
                 self.log(f"📂 Repository exists at {repo_path.name}")
@@ -104,6 +108,7 @@ class GitService:
 
                 current_branch = self.get_current_branch(repo_path)
                 self.log(f"   🔍 Current branch: {current_branch}")
+                self.log(f"   🎯 Target branch: {branch}")
 
                 # Fetch latest changes
                 self.log(f"   ⬇️ Fetching updates...")
@@ -120,7 +125,7 @@ class GitService:
 
                 # Switch to target branch if different
                 if current_branch != branch:
-                    self.log(f"   🔄 Switching to branch: {branch}")
+                    self.log(f"   🔄 Switching from {current_branch} to {branch}")
 
                     # Try to checkout branch
                     result = subprocess.run(
@@ -146,8 +151,10 @@ class GitService:
                             self.log(f"   ❌ Failed to checkout branch: {result.stderr.strip()}")
                             return False
 
+                    self.log(f"   ✅ Successfully switched to {branch}")
+
                 # Pull latest changes
-                self.log(f"   ⬇️ Pulling latest changes...")
+                self.log(f"   ⬇️ Pulling latest changes from {branch}...")
                 result = subprocess.run(
                     [self.git_cmd, "pull", "--rebase"],
                     cwd=str(repo_path),
@@ -163,7 +170,7 @@ class GitService:
                     self.log(f"   ⚠️ Pull warning: {result.stderr.strip()}")
 
             else:
-                # Clone repository
+                # Clone repository with specified branch
                 self.log(f"📥 Cloning {repo_url}")
                 self.log(f"   🔍 Branch: {branch}")
                 self.log(f"   📂 Destination: {repo_path}")
@@ -180,7 +187,7 @@ class GitService:
 
                 if result.returncode != 0:
                     # Try without branch specification (in case branch doesn't exist)
-                    self.log(f"   ⚠️ Branch {branch} not found, cloning default branch...")
+                    self.log(f"   ⚠️ Branch {branch} not found, trying default branch...")
                     result = subprocess.run(
                         [self.git_cmd, "clone", "--depth", "1", repo_url, str(repo_path)],
                         capture_output=True,
@@ -191,6 +198,19 @@ class GitService:
                     if result.returncode != 0:
                         self.log(f"   ❌ Clone failed: {result.stderr.strip()}")
                         return False
+
+                    # After cloning with default branch, try to checkout the requested branch
+                    self.log(f"   🔄 Attempting to checkout {branch}...")
+                    result = subprocess.run(
+                        [self.git_cmd, "checkout", "-b", branch, f"origin/{branch}"],
+                        cwd=str(repo_path),
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+
+                    if result.returncode != 0:
+                        self.log(f"   ⚠️ Could not checkout {branch}, staying on default branch")
 
                 self.log(f"   ✅ Clone completed successfully")
 

@@ -1,5 +1,8 @@
 """
-Application routes and API endpoints
+Application routes and API endpoints - FIXED VERSION
+Key fixes:
+1. Support for per-service branch selection via build_configs parameter
+2. Proper button loading state management
 """
 
 from flask import request, jsonify, render_template_string
@@ -55,7 +58,7 @@ def register_routes(app, socketio, config_manager, builder):
             return jsonify({'success': False, 'error': 'Maven path required'}), 400
 
         # Verify the Maven path works
-        from build_automation.app.services.command_finder import CommandFinder
+        from app.services.command_finder import CommandFinder
         finder = CommandFinder()
         maven_info = finder.verify_maven(maven_path)
 
@@ -195,7 +198,7 @@ def register_routes(app, socketio, config_manager, builder):
 
     @app.route('/api/build', methods=['POST'])
     def start_build():
-        """Start build process"""
+        """Start build process - FIXED to support per-service branches"""
         data = request.json
         group_id = data.get('group_id')
         service_names = data.get('services', [])
