@@ -4,6 +4,7 @@ Microservice Build Automation Tool - Main Entry Point
 High-performance parallel builds with intelligent caching
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -11,8 +12,8 @@ from pathlib import Path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from build_automation.app import create_app
-from build_automation.app.utils.system_info import SystemInfo
+from app import create_app
+from app.utils.system_info import SystemInfo
 
 
 def main():
@@ -44,8 +45,7 @@ def main():
     print("=" * 80 + "\n")
 
     app, socketio = create_app()
-    socketio.run(app, debug=False, host='0.0.0.0', port=5000,
-                 allow_unsafe_werkzeug=True, use_reloader=False)
+    socketio.run(app, debug=False, host='0.0.0.0', port=5000)
 
 
 if __name__ == '__main__':
