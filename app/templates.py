@@ -749,7 +749,7 @@ HTML_TEMPLATE = r"""
             updateStatus('Loading projects...');
 
             const tbody = document.getElementById('servicesTableBody');
-            tbody.innerHTML = '<tr><td colspan="3" class="loading-spinner">Loading projects and branches...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="3" class="loading-spinner">Loading projects...</td></tr>';
 
             try {
                 const response = await fetch(`/api/projects/${groupId}`);
@@ -762,21 +762,12 @@ HTML_TEMPLATE = r"""
                     return;
                 }
 
-                // Load branches for each project
-                updateStatus(`Loading branches for ${projectsData.length} projects...`);
-                
-                for (let project of projectsData) {
-                    try {
-                        const branchResponse = await fetch(`/api/project/${project.id}/branches`);
-                        const branchData = await branchResponse.json();
-                        project.branches = branchData.branches || [];
-                        project.selectedBranch = project.default_branch || 'master';
-                    } catch (error) {
-                        console.error(`Error loading branches for ${project.name}:`, error);
-                        project.branches = [project.default_branch || 'master'];
-                        project.selectedBranch = project.default_branch || 'master';
-                    }
-                }
+                // Initialize projects with default branch only (don't fetch all branches yet)
+                projectsData.forEach(project => {
+                    project.branches = [project.default_branch || 'master'];
+                    project.selectedBranch = project.default_branch || 'master';
+                    project.branchesLoaded = false;
+                });
 
                 renderProjectsTable();
                 updateStatus(`Loaded ${projectsData.length} projects`);
@@ -788,6 +779,49 @@ HTML_TEMPLATE = r"""
             }
         }
 
+        async function loadBranchesForProject(index) {
+            const project = projectsData[index];
+            
+            // Skip if already loaded
+            if (project.branchesLoaded) {
+                return;
+            }
+
+            const branchSelect = document.querySelector(`.branch-select[data-index="${index}"]`);
+            const originalHTML = branchSelect.innerHTML;
+            branchSelect.disabled = true;
+            branchSelect.innerHTML = '<option>Loading branches...</option>';
+
+            try {
+                const response = await fetch(`/api/project/${project.id}/branches`);
+                const data = await response.json();
+                
+                if (data.branches && data.branches.length > 0) {
+                    project.branches = data.branches;
+                    project.branchesLoaded = true;
+                    
+                    // Rebuild branch options
+                    let branchOptions = '';
+                    project.branches.forEach(branch => {
+                        const isDefault = branch === project.default_branch;
+                        const selected = branch === project.selectedBranch ? 'selected' : '';
+                        branchOptions += `<option value="${branch}" ${selected}>${branch}${isDefault ? ' (default)' : ''}</option>`;
+                    });
+                    
+                    branchSelect.innerHTML = branchOptions;
+                } else {
+                    // If no branches found, keep default
+                    branchSelect.innerHTML = originalHTML;
+                }
+            } catch (error) {
+                console.error(`Error loading branches for ${project.name}:`, error);
+                branchSelect.innerHTML = originalHTML;
+                alert(`Failed to load branches for ${project.name}`);
+            } finally {
+                branchSelect.disabled = false;
+            }
+        }
+
         function renderProjectsTable() {
             const tbody = document.getElementById('servicesTableBody');
             tbody.innerHTML = '';
@@ -795,9 +829,9 @@ HTML_TEMPLATE = r"""
             projectsData.forEach((project, index) => {
                 const row = document.createElement('tr');
                 
-                // Checkbox cell
+                // Checkbox cell with onChange handler
                 const checkboxCell = document.createElement('td');
-                checkboxCell.innerHTML = `<input type="checkbox" class="service-checkbox" data-index="${index}">`;
+                checkboxCell.innerHTML = `<input type="checkbox" class="service-checkbox" data-index="${index}" onchange="handleServiceCheckboxChange(${index})">`;
                 row.appendChild(checkboxCell);
 
                 // Service name cell
@@ -814,9 +848,12 @@ HTML_TEMPLATE = r"""
                     branchOptions += `<option value="${branch}" ${selected}>${branch}${isDefault ? ' (default)' : ''}</option>`;
                 });
                 
+                const loadMoreOption = project.branchesLoaded ? '' : '<option value="__load__">📥 Load all branches...</option>';
+                
                 branchCell.innerHTML = `
-                    <select class="branch-select" data-index="${index}" onchange="updateBranchSelection(${index}, this.value)">
+                    <select class="branch-select" data-index="${index}" onchange="handleBranchChange(${index}, this.value)">
                         ${branchOptions}
+                        ${loadMoreOption}
                     </select>
                 `;
                 row.appendChild(branchCell);
@@ -825,8 +862,24 @@ HTML_TEMPLATE = r"""
             });
         }
 
-        function updateBranchSelection(index, branch) {
-            projectsData[index].selectedBranch = branch;
+        async function handleServiceCheckboxChange(index) {
+            const checkbox = document.querySelector(`.service-checkbox[data-index="${index}"]`);
+            const project = projectsData[index];
+            
+            // Load branches when service is selected for the first time
+            if (checkbox.checked && !project.branchesLoaded) {
+                await loadBranchesForProject(index);
+            }
+        }
+
+        async function handleBranchChange(index, value) {
+            if (value === '__load__') {
+                // User clicked "Load all branches"
+                await loadBranchesForProject(index);
+            } else {
+                // Normal branch selection
+                projectsData[index].selectedBranch = value;
+            }
         }
 
         function toggleSelectAll() {
