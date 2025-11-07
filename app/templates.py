@@ -1439,28 +1439,35 @@ HTML_TEMPLATE = r"""
             if (project.branchesLoaded || project.branchesLoading) {
                 return;
             }
-
+        
             if (branchCache[project.id]) {
                 project.branches = branchCache[project.id];
                 project.branchesLoaded = true;
                 renderBranchSelection(index);
                 return;
             }
-
+        
             project.branchesLoading = true;
             updateBranchCell(index, '⏳ Loading branches...');
-
+        
             try {
                 const response = await fetch(`/api/project/${project.id}/branches`);
                 const data = await response.json();
                 
+                console.log('Branch API response:', data);
+                
                 if (data.branches && data.branches.length > 0) {
+                    // API returns branches as objects with { name, is_default, display }
                     project.branches = data.branches;
+                    project.default_branch = data.default_branch || project.default_branch;
                     project.branchesLoaded = true;
-                    branchCache[project.id] = data.branches;
+                    branchCache[project.id] = project.branches;
+                    
+                    console.log(`Loaded ${project.branches.length} branches for ${project.name}`);
                     
                     renderBranchSelection(index);
                 } else {
+                    console.log('No branches found in response');
                     updateBranchCell(index, 'No branches found');
                 }
             } catch (error) {
@@ -1482,12 +1489,12 @@ HTML_TEMPLATE = r"""
             const project = projectsData[index];
             const cell = document.querySelector(`#branch-cell-${index}`);
             if (!cell) return;
-
+        
             if (project.branches.length === 0) {
                 cell.innerHTML = `<div class="no-branches">No branches available</div>`;
                 return;
             }
-
+        
             const searchId = `branch-search-${index}`;
             const selectId = `branch-select-${index}`;
             
@@ -1506,21 +1513,23 @@ HTML_TEMPLATE = r"""
                             size="5" 
                             onchange="handleBranchChange(${index}, this.value)">
             `;
-
+        
+            // FIX: Access branch.name instead of treating branch as a string
             project.branches.forEach(branch => {
-                const isDefault = branch === project.default_branch;
-                const selected = branch === project.selectedBranch ? 'selected' : '';
-                html += `<option value="${branch}" ${selected} data-branch="${branch.toLowerCase()}" style="padding: 6px;">
-                    ${branch}${isDefault ? ' 🌟' : ''}
+                const branchName = branch.name;  // <-- KEY FIX HERE
+                const isDefault = branch.is_default || branchName === project.default_branch;
+                const selected = branchName === project.selectedBranch ? 'selected' : '';
+                html += `<option value="${branchName}" ${selected} data-branch="${branchName.toLowerCase()}" style="padding: 6px;">
+                    ${branchName}${isDefault ? ' 🌟' : ''}
                 </option>`;
             });
-
+        
             html += `
                     </select>
                     <div class="branch-count">${project.branches.length} branches total</div>
                 </div>
             `;
-
+        
             cell.innerHTML = html;
         }
 
@@ -1633,13 +1642,16 @@ HTML_TEMPLATE = r"""
                     return;
                 }
                 
+                // Include project_id and default_branch for the build API
                 selected.push({
+                    project_id: project.id,
                     name: project.name,
                     repo_url: project.http_url_to_repo,
-                    branch: project.selectedBranch
+                    branch: project.selectedBranch,
+                    default_branch: project.default_branch
                 });
             });
-
+        
             return selected;
         }
 
