@@ -1,8 +1,9 @@
 """
-Application routes and API endpoints - FIXED VERSION
-Key fixes:
-1. Support for per-service branch selection via build_configs parameter
-2. Proper button loading state management
+Application routes and API endpoints - SEQUENTIAL FLOW VERSION
+Key changes:
+1. Load projects first (shows microservices list)
+2. Separate API to fetch branches for each project
+3. Build uses selected branches per service
 """
 
 from flask import request, jsonify, render_template_string
@@ -112,25 +113,83 @@ def register_routes(app, socketio, config_manager, builder):
 
     @app.route('/api/projects/<group_id>')
     def get_projects(group_id):
-        """Get projects in a group"""
+        """
+        Step 1: Get projects in a group (shows microservices list)
+        Returns basic project info with default branch only
+        """
         global cached_projects
 
         if not gitlab_client:
             return jsonify({'error': 'Not connected to GitLab'}), 400
 
         projects = gitlab_client.get_group_projects(group_id)
+
+        # Store in cache
         cached_projects[group_id] = projects
 
-        return jsonify({'projects': projects})
+        # Return simplified project list
+        project_list = []
+        for project in projects:
+            project_list.append({
+                'id': project['id'],
+                'name': project['name'],
+                'http_url_to_repo': project['http_url_to_repo'],
+                'default_branch': project.get('default_branch', 'master'),
+                'description': project.get('description', ''),
+                'path_with_namespace': project.get('path_with_namespace', '')
+            })
+
+        return jsonify({
+            'projects': project_list,
+            'count': len(project_list)
+        })
 
     @app.route('/api/project/<int:project_id>/branches')
     def get_project_branches(project_id):
-        """Get branches for a project"""
+        """
+        Step 2: Get all branches for a specific project
+        Called on-demand when user selects a service
+        """
         if not gitlab_client:
             return jsonify({'error': 'Not connected to GitLab'}), 400
 
-        branches = gitlab_client.get_project_branches(project_id)
-        return jsonify({'branches': branches})
+        try:
+            branches = gitlab_client.get_project_branches(project_id)
+            return jsonify({
+                'project_id': project_id,
+                'branches': branches,
+                'count': len(branches)
+            })
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/projects/<group_id>/branches-bulk', methods=['POST'])
+    def get_branches_bulk(group_id):
+        """
+        Optional: Get branches for multiple projects at once
+        Accepts list of project IDs
+        """
+        if not gitlab_client:
+            return jsonify({'error': 'Not connected to GitLab'}), 400
+
+        data = request.json
+        project_ids = data.get('project_ids', [])
+
+        if not project_ids:
+            return jsonify({'error': 'No project IDs provided'}), 400
+
+        results = {}
+        for project_id in project_ids:
+            try:
+                branches = gitlab_client.get_project_branches(project_id)
+                results[str(project_id)] = branches
+            except Exception as e:
+                results[str(project_id)] = {'error': str(e)}
+
+        return jsonify({
+            'results': results,
+            'count': len(results)
+        })
 
     @app.route('/api/settings-files')
     def list_settings_files():
@@ -198,18 +257,20 @@ def register_routes(app, socketio, config_manager, builder):
 
     @app.route('/api/build', methods=['POST'])
     def start_build():
-        """Start build process - FIXED to support per-service branches"""
+        """
+        Step 3: Start build process with selected branches
+        Expects build_configs with service name, repo_url, and branch
+        """
         data = request.json
         group_id = data.get('group_id')
-        service_names = data.get('services', [])
-        build_configs = data.get('build_configs', [])  # New: includes branch per service
+        build_configs = data.get('build_configs', [])
         force = data.get('force', False)
         max_workers = data.get('max_workers', 4)
 
         if not group_id:
             return jsonify({'error': 'Group ID is required'}), 400
 
-        if not service_names and not build_configs:
+        if not build_configs:
             return jsonify({'error': 'No services selected'}), 400
 
         # Load group settings
@@ -219,46 +280,20 @@ def register_routes(app, socketio, config_manager, builder):
         if not settings_xml_path:
             return jsonify({'error': 'Group settings not configured. Please upload settings.xml first.'}), 400
 
-        if group_id not in cached_projects:
-            return jsonify({'error': 'Projects not loaded for this group'}), 400
-
-        projects = cached_projects[group_id]
-
-        # Create BuildConfig objects
+        # Create BuildConfig objects from the provided configs
         configs = []
-
-        # If build_configs provided (with branches), use that
-        if build_configs:
-            for build_conf in build_configs:
-                # Find the full project details
-                project = next((p for p in projects if p['name'] == build_conf['name']), None)
-                if project:
-                    config = BuildConfig(
-                        service_name=build_conf['name'],
-                        group_id=group_id,
-                        repo_url=build_conf.get('repo_url', project['http_url_to_repo']),
-                        branch=build_conf.get('branch', 'master'),
-                        settings_file=settings_xml_path,
-                        maven_profiles=settings.get('default_profiles', []),
-                        jvm_options=settings.get('jvm_options', ''),
-                        maven_threads=settings.get('maven_threads', 4)
-                    )
-                    configs.append(config)
-        else:
-            # Old method: service names only, use default branch
-            for project in projects:
-                if project['name'] in service_names:
-                    config = BuildConfig(
-                        service_name=project['name'],
-                        group_id=group_id,
-                        repo_url=project['http_url_to_repo'],
-                        branch=project.get('default_branch', 'master'),
-                        settings_file=settings_xml_path,
-                        maven_profiles=settings.get('default_profiles', []),
-                        jvm_options=settings.get('jvm_options', ''),
-                        maven_threads=settings.get('maven_threads', 4)
-                    )
-                    configs.append(config)
+        for build_conf in build_configs:
+            config = BuildConfig(
+                service_name=build_conf['name'],
+                group_id=group_id,
+                repo_url=build_conf['repo_url'],
+                branch=build_conf['branch'],
+                settings_file=settings_xml_path,
+                maven_profiles=settings.get('default_profiles', []),
+                jvm_options=settings.get('jvm_options', ''),
+                maven_threads=settings.get('maven_threads', 4)
+            )
+            configs.append(config)
 
         if not configs:
             return jsonify({'error': 'No valid services found'}), 400
@@ -283,7 +318,10 @@ def register_routes(app, socketio, config_manager, builder):
         # Start build in background thread
         threading.Thread(target=build_thread, daemon=True).start()
 
-        return jsonify({'message': f'Building {len(configs)} services...'})
+        return jsonify({
+            'message': f'Building {len(configs)} services...',
+            'services': [c.service_name for c in configs]
+        })
 
     @app.route('/api/cache/clear', methods=['POST'])
     def clear_cache():
@@ -294,7 +332,6 @@ def register_routes(app, socketio, config_manager, builder):
     @app.route('/api/logs/current', methods=['GET'])
     def get_current_logs():
         """Get current logs (if log buffer is implemented)"""
-        # Note: This would require adding a log buffer to the builder
         return jsonify({'logs': 'Log export not yet implemented'})
 
     # SocketIO events

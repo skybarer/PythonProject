@@ -1,9 +1,8 @@
 """
-UI templates with branch selection and working button loaders
-KEY FEATURES:
-1. Per-service branch selection
-2. Branch fetching from GitLab API
-3. Fixed button loading states
+UI templates with sequential loading:
+1. Load microservices list first (fast)
+2. Fetch branches on-demand when service is selected
+3. Build with selected branches
 """
 
 HTML_TEMPLATE = r"""
@@ -50,9 +49,7 @@ HTML_TEMPLATE = r"""
             margin-bottom: 15px;
             color: #333;
         }
-        .form-group {
-            margin-bottom: 15px;
-        }
+        .form-group { margin-bottom: 15px; }
         label {
             display: block;
             margin-bottom: 5px;
@@ -92,25 +89,13 @@ HTML_TEMPLATE = r"""
             color: white;
         }
         .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4); }
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-        }
+        .btn-secondary { background: #6c757d; color: white; }
         .btn-secondary:hover:not(:disabled) { background: #5a6268; }
-        .btn-danger {
-            background: #dc3545;
-            color: white;
-        }
+        .btn-danger { background: #dc3545; color: white; }
         .btn-danger:hover:not(:disabled) { background: #c82333; }
-        .btn-success {
-            background: #28a745;
-            color: white;
-        }
+        .btn-success { background: #28a745; color: white; }
         .btn-success:hover:not(:disabled) { background: #218838; }
-        .btn-info {
-            background: #17a2b8;
-            color: white;
-        }
+        .btn-info { background: #17a2b8; color: white; }
         .btn-info:hover:not(:disabled) { background: #138496; }
         
         .btn.loading {
@@ -136,7 +121,6 @@ HTML_TEMPLATE = r"""
             to { transform: rotate(360deg); }
         }
         
-        /* Service table with branch selection */
         #servicesTable {
             width: 100%;
             border-collapse: collapse;
@@ -301,21 +285,22 @@ HTML_TEMPLATE = r"""
             padding: 5px 0;
             border-bottom: 1px solid #eee;
         }
-        .prereq-item:last-child {
-            border-bottom: none;
-        }
-        .prereq-ok {
-            color: #28a745;
-            font-weight: 600;
-        }
-        .prereq-error {
-            color: #dc3545;
-            font-weight: 600;
-        }
+        .prereq-item:last-child { border-bottom: none; }
+        .prereq-ok { color: #28a745; font-weight: 600; }
+        .prereq-error { color: #dc3545; font-weight: 600; }
         .loading-spinner {
             text-align: center;
             padding: 20px;
             color: #666;
+        }
+        .info-badge {
+            display: inline-block;
+            background: #17a2b8;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            margin-left: 8px;
         }
     </style>
 </head>
@@ -323,7 +308,7 @@ HTML_TEMPLATE = r"""
     <div class="container">
         <div class="header">
             <h1>🚀 Microservice Build Automation</h1>
-            <p>Parallel builds with intelligent caching and per-service branch selection</p>
+            <p>Sequential loading: Microservices → Branches → Build</p>
         </div>
 
         <div class="content">
@@ -385,15 +370,18 @@ HTML_TEMPLATE = r"""
                 </div>
 
                 <button class="btn btn-success" id="btnSaveSettings" onclick="saveGroupSettings()">Save Group Settings</button>
-                <button class="btn btn-secondary" id="btnLoadProjects" onclick="loadProjects()">Load Projects</button>
+                <button class="btn btn-secondary" id="btnLoadProjects" onclick="loadProjects()">Load Microservices</button>
             </div>
 
             <div class="section">
-                <h2>Build Services</h2>
+                <h2>Build Services <span id="projectCount" class="info-badge" style="display: none;">0 services</span></h2>
                 
                 <div class="select-all-container">
                     <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()">
                     <label for="selectAllCheckbox">Select All Services</label>
+                    <button class="btn btn-info" onclick="fetchAllBranches()" id="btnFetchAllBranches" style="margin-left: auto; display: none;">
+                        Fetch All Branches
+                    </button>
                 </div>
                 
                 <div style="overflow-x: auto;">
@@ -403,12 +391,13 @@ HTML_TEMPLATE = r"""
                                 <th style="width: 50px;">Select</th>
                                 <th>Service Name</th>
                                 <th style="width: 250px;">Branch</th>
+                                <th style="width: 100px;">Status</th>
                             </tr>
                         </thead>
                         <tbody id="servicesTableBody">
                             <tr>
-                                <td colspan="3" style="text-align: center; padding: 40px; color: #999;">
-                                    No projects loaded. Please select a group and click "Load Projects".
+                                <td colspan="4" style="text-align: center; padding: 40px; color: #999;">
+                                    No projects loaded. Please select a group and click "Load Microservices".
                                 </td>
                             </tr>
                         </tbody>
@@ -463,7 +452,7 @@ HTML_TEMPLATE = r"""
             logOutput.innerHTML += '<span style="color: #4CAF50; font-weight: bold;">========================================</span><br>';
             logOutput.innerHTML += `<span style="color: #4CAF50;">✅ Success: ${data.success}</span><br>`;
             logOutput.innerHTML += `<span style="color: #f44336;">❌ Failed: ${data.failed}</span><br>`;
-            logOutput.innerHTML += `<span style="color: #FF9800;">⏭️ Skipped: ${data.skipped}</span><br>`;
+            logOutput.innerHTML += `<span style="color: #FF9800;">⭐️ Skipped: ${data.skipped}</span><br>`;
             logOutput.innerHTML += '<span style="color: #4CAF50; font-weight: bold;">========================================</span><br>';
             logOutput.scrollTop = logOutput.scrollHeight;
         });
@@ -738,6 +727,7 @@ HTML_TEMPLATE = r"""
             }
         }
 
+        // STEP 1: Load microservices list (fast)
         async function loadProjects() {
             const groupId = document.getElementById('groupSelect').value;
             if (!groupId) {
@@ -746,51 +736,54 @@ HTML_TEMPLATE = r"""
             }
 
             setButtonLoading('btnLoadProjects', true);
-            updateStatus('Loading projects...');
+            updateStatus('Loading microservices...');
 
             const tbody = document.getElementById('servicesTableBody');
-            tbody.innerHTML = '<tr><td colspan="3" class="loading-spinner">Loading projects...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="4" class="loading-spinner">Loading microservices...</td></tr>';
 
             try {
                 const response = await fetch(`/api/projects/${groupId}`);
                 const data = await response.json();
-                projectsData = data.projects;
+                projectsData = data.projects.map(project => ({
+                    ...project,
+                    branches: [project.default_branch],
+                    selectedBranch: project.default_branch,
+                    branchesLoaded: false,
+                    branchesLoading: false
+                }));
 
                 if (projectsData.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 40px; color: #999;">No projects found in this group</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 40px; color: #999;">No projects found in this group</td></tr>';
                     updateStatus('No projects found');
+                    document.getElementById('projectCount').style.display = 'none';
+                    document.getElementById('btnFetchAllBranches').style.display = 'none';
                     return;
                 }
 
-                // Initialize projects with default branch only (don't fetch all branches yet)
-                projectsData.forEach(project => {
-                    project.branches = [project.default_branch || 'master'];
-                    project.selectedBranch = project.default_branch || 'master';
-                    project.branchesLoaded = false;
-                });
-
                 renderProjectsTable();
-                updateStatus(`Loaded ${projectsData.length} projects`);
+                updateStatus(`Loaded ${projectsData.length} microservices`);
+                document.getElementById('projectCount').textContent = `${projectsData.length} services`;
+                document.getElementById('projectCount').style.display = 'inline-block';
+                document.getElementById('btnFetchAllBranches').style.display = 'inline-block';
             } catch (error) {
                 alert('Error loading projects: ' + error);
-                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 40px; color: #dc3545;">Error loading projects</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 40px; color: #dc3545;">Error loading projects</td></tr>';
             } finally {
                 setButtonLoading('btnLoadProjects', false);
             }
         }
 
+        // STEP 2: Fetch branches for a specific project (on-demand)
         async function loadBranchesForProject(index) {
             const project = projectsData[index];
             
-            // Skip if already loaded
-            if (project.branchesLoaded) {
+            // Skip if already loaded or loading
+            if (project.branchesLoaded || project.branchesLoading) {
                 return;
             }
 
-            const branchSelect = document.querySelector(`.branch-select[data-index="${index}"]`);
-            const originalHTML = branchSelect.innerHTML;
-            branchSelect.disabled = true;
-            branchSelect.innerHTML = '<option>Loading branches...</option>';
+            project.branchesLoading = true;
+            updateProjectStatus(index, 'Loading branches...');
 
             try {
                 const response = await fetch(`/api/project/${project.id}/branches`);
@@ -799,26 +792,56 @@ HTML_TEMPLATE = r"""
                 if (data.branches && data.branches.length > 0) {
                     project.branches = data.branches;
                     project.branchesLoaded = true;
+                    updateProjectStatus(index, `${data.branches.length} branches`);
                     
-                    // Rebuild branch options
-                    let branchOptions = '';
-                    project.branches.forEach(branch => {
-                        const isDefault = branch === project.default_branch;
-                        const selected = branch === project.selectedBranch ? 'selected' : '';
-                        branchOptions += `<option value="${branch}" ${selected}>${branch}${isDefault ? ' (default)' : ''}</option>`;
-                    });
-                    
-                    branchSelect.innerHTML = branchOptions;
+                    // Update the branch select dropdown
+                    const branchSelect = document.querySelector(`.branch-select[data-index="${index}"]`);
+                    if (branchSelect) {
+                        let branchOptions = '';
+                        project.branches.forEach(branch => {
+                            const isDefault = branch === project.default_branch;
+                            const selected = branch === project.selectedBranch ? 'selected' : '';
+                            branchOptions += `<option value="${branch}" ${selected}>${branch}${isDefault ? ' (default)' : ''}</option>`;
+                        });
+                        branchSelect.innerHTML = branchOptions;
+                    }
                 } else {
-                    // If no branches found, keep default
-                    branchSelect.innerHTML = originalHTML;
+                    updateProjectStatus(index, 'No branches found');
                 }
             } catch (error) {
                 console.error(`Error loading branches for ${project.name}:`, error);
-                branchSelect.innerHTML = originalHTML;
-                alert(`Failed to load branches for ${project.name}`);
+                updateProjectStatus(index, 'Error loading branches');
             } finally {
-                branchSelect.disabled = false;
+                project.branchesLoading = false;
+            }
+        }
+
+        // Fetch all branches for all projects
+        async function fetchAllBranches() {
+            if (projectsData.length === 0) {
+                alert('No projects loaded');
+                return;
+            }
+
+            setButtonLoading('btnFetchAllBranches', true);
+            updateStatus('Fetching branches for all projects...');
+
+            const promises = [];
+            for (let i = 0; i < projectsData.length; i++) {
+                if (!projectsData[i].branchesLoaded) {
+                    promises.push(loadBranchesForProject(i));
+                }
+            }
+
+            await Promise.all(promises);
+            updateStatus(`Fetched branches for ${projectsData.length} projects`);
+            setButtonLoading('btnFetchAllBranches', false);
+        }
+
+        function updateProjectStatus(index, status) {
+            const statusCell = document.querySelector(`.status-cell[data-index="${index}"]`);
+            if (statusCell) {
+                statusCell.textContent = status;
             }
         }
 
@@ -829,7 +852,7 @@ HTML_TEMPLATE = r"""
             projectsData.forEach((project, index) => {
                 const row = document.createElement('tr');
                 
-                // Checkbox cell with onChange handler
+                // Checkbox cell
                 const checkboxCell = document.createElement('td');
                 checkboxCell.innerHTML = `<input type="checkbox" class="service-checkbox" data-index="${index}" onchange="handleServiceCheckboxChange(${index})">`;
                 row.appendChild(checkboxCell);
@@ -848,15 +871,21 @@ HTML_TEMPLATE = r"""
                     branchOptions += `<option value="${branch}" ${selected}>${branch}${isDefault ? ' (default)' : ''}</option>`;
                 });
                 
-                const loadMoreOption = project.branchesLoaded ? '' : '<option value="__load__">📥 Load all branches...</option>';
-                
                 branchCell.innerHTML = `
                     <select class="branch-select" data-index="${index}" onchange="handleBranchChange(${index}, this.value)">
                         ${branchOptions}
-                        ${loadMoreOption}
                     </select>
                 `;
                 row.appendChild(branchCell);
+
+                // Status cell
+                const statusCell = document.createElement('td');
+                statusCell.className = 'status-cell';
+                statusCell.setAttribute('data-index', index);
+                statusCell.textContent = 'Default branch';
+                statusCell.style.fontSize = '12px';
+                statusCell.style.color = '#666';
+                row.appendChild(statusCell);
 
                 tbody.appendChild(row);
             });
@@ -867,25 +896,24 @@ HTML_TEMPLATE = r"""
             const project = projectsData[index];
             
             // Load branches when service is selected for the first time
-            if (checkbox.checked && !project.branchesLoaded) {
+            if (checkbox.checked && !project.branchesLoaded && !project.branchesLoading) {
                 await loadBranchesForProject(index);
             }
         }
 
-        async function handleBranchChange(index, value) {
-            if (value === '__load__') {
-                // User clicked "Load all branches"
-                await loadBranchesForProject(index);
-            } else {
-                // Normal branch selection
-                projectsData[index].selectedBranch = value;
-            }
+        function handleBranchChange(index, value) {
+            projectsData[index].selectedBranch = value;
         }
 
         function toggleSelectAll() {
             const selectAll = document.getElementById('selectAllCheckbox').checked;
             const checkboxes = document.querySelectorAll('.service-checkbox');
-            checkboxes.forEach(cb => cb.checked = selectAll);
+            checkboxes.forEach((cb, index) => {
+                cb.checked = selectAll;
+                if (selectAll) {
+                    handleServiceCheckboxChange(index);
+                }
+            });
         }
 
         function getSelectedServices() {
@@ -905,6 +933,7 @@ HTML_TEMPLATE = r"""
             return selected;
         }
 
+        // STEP 3: Build with selected branches
         async function buildSelected() {
             const selectedServices = getSelectedServices();
             
