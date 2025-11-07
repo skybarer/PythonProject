@@ -1,7 +1,7 @@
 """
-routes.py - FULLY FIXED FOR BRANCH SUPPORT
-Now: ANY branch from GitLab API works!
-No more "stuck on main"
+routes.py - FULLY FIXED BRANCH LOADING
+Now: Branches load reliably with proper error handling
+Shows ALL branches exactly as GitLab UI shows them
 """
 
 from flask import request, jsonify, render_template_string
@@ -85,20 +85,24 @@ def register_routes(app, socketio, config_manager, builder):
         if not gitlab_client:
             return jsonify({'error': 'Not connected'}), 400
 
+        print(f"\n=== Loading projects for group: {group_id} ===")
         projects = gitlab_client.get_group_projects(group_id)
         cached_projects[group_id] = projects
 
         enriched = []
         for p in projects:
+            default_branch = p.get('default_branch') or 'main'
             enriched.append({
                 'id': p['id'],
                 'name': p['name'],
                 'http_url_to_repo': p['http_url_to_repo'],
-                'default_branch': p.get('default_branch') or 'main',
+                'default_branch': default_branch,
                 'path_with_namespace': p['path_with_namespace'],
                 'web_url': p['web_url']
             })
+            print(f"  Project: {p['name']} | Default: {default_branch}")
 
+        print(f"=== Total projects loaded: {len(enriched)} ===\n")
         return jsonify({
             'projects': enriched,
             'count': len(enriched)
@@ -106,42 +110,87 @@ def register_routes(app, socketio, config_manager, builder):
 
     @app.route('/api/project/<int:project_id>/branches')
     def get_project_branches(project_id):
+        """
+        FIXED: Now returns ALL branches with proper error handling
+        Shows branches exactly as GitLab UI shows them
+        """
         if not gitlab_client:
-            return jsonify({'error': 'Not connected'}), 400
+            return jsonify({'error': 'Not connected', 'branches': []}), 400
+
+        print(f"\n=== Fetching branches for project ID: {project_id} ===")
 
         try:
+            # Get branches from GitLab API
             branches = gitlab_client.get_project_branches(project_id)
-            default = 'main'
 
-            # Find default branch from cache
+            if not branches:
+                print(f"⚠️ No branches returned from GitLab API")
+                return jsonify({
+                    'error': 'No branches found',
+                    'project_id': project_id,
+                    'branches': [],
+                    'default_branch': 'main',
+                    'count': 0
+                }), 200
+
+            # Find default branch from cached projects
+            default_branch = 'main'
+            project_name = f"Project {project_id}"
+
             for projects in cached_projects.values():
                 for p in projects:
                     if p['id'] == project_id:
-                        default = p.get('default_branch') or 'main'
+                        default_branch = p.get('default_branch') or 'main'
+                        project_name = p['name']
                         break
 
-            # Mark default with star
+            print(f"  Project: {project_name}")
+            print(f"  Default branch: {default_branch}")
+            print(f"  Total branches: {len(branches)}")
+
+            # Enrich branches with metadata
             enriched = []
-            for b in branches:
+            for branch in branches:
+                is_default = (branch == default_branch)
                 enriched.append({
-                    'name': b,
-                    'is_default': b == default,
-                    'display': f"{b} (default)" if b == default else b
+                    'name': branch,
+                    'is_default': is_default,
+                    'display': f"{branch} {'🌟' if is_default else ''}"
                 })
+                if is_default:
+                    print(f"    ✓ {branch} (default)")
+                else:
+                    print(f"    - {branch}")
+
+            print(f"=== Branches loaded successfully ===\n")
 
             return jsonify({
+                'success': True,
                 'project_id': project_id,
+                'project_name': project_name,
                 'branches': enriched,
-                'default_branch': default,
+                'branch_names': branches,  # Raw names for easy access
+                'default_branch': default_branch,
                 'count': len(branches)
             })
+
         except Exception as e:
-            return jsonify({'error': str(e)}), 500
+            print(f"❌ ERROR loading branches: {str(e)}")
+            import traceback
+            traceback.print_exc()
+
+            return jsonify({
+                'error': str(e),
+                'project_id': project_id,
+                'branches': [],
+                'default_branch': 'main',
+                'count': 0
+            }), 500
 
     @app.route('/api/build', methods=['POST'])
     def start_build():
         """
-        FIXED: Now supports ANY branch from GitLab
+        Build services with selected branches
         """
         data = request.json
         group_id = data.get('group_id')
@@ -159,8 +208,12 @@ def register_routes(app, socketio, config_manager, builder):
 
         configs = []
         for conf in build_configs:
-            project_id = conf['project_id']
-            selected_branch = conf['branch']
+            project_id = conf.get('project_id')
+            selected_branch = conf.get('branch')
+
+            if not selected_branch:
+                print(f"⚠️ No branch selected for {conf['name']}, using default")
+                selected_branch = conf.get('default_branch', 'main')
 
             # Find default branch
             default_branch = 'main'
@@ -169,8 +222,13 @@ def register_routes(app, socketio, config_manager, builder):
                     default_branch = p.get('default_branch') or 'main'
                     break
 
-            # CRITICAL: Force full fetch if not default
+            # Force full fetch if not default branch
             force_fetch = (selected_branch != default_branch)
+
+            print(f"\n=== Build Config for {conf['name']} ===")
+            print(f"  Branch: {selected_branch}")
+            print(f"  Default: {default_branch}")
+            print(f"  Force fetch: {force_fetch}")
 
             config = BuildConfig(
                 service_name=conf['name'],
@@ -181,7 +239,7 @@ def register_routes(app, socketio, config_manager, builder):
                 maven_profiles=settings.get('default_profiles', []),
                 jvm_options=settings.get('jvm_options', ''),
                 maven_threads=settings.get('maven_threads', 4),
-                force_full_fetch=force_fetch   # NEW FLAG
+                force_full_fetch=force_fetch
             )
             configs.append(config)
 
@@ -190,10 +248,12 @@ def register_routes(app, socketio, config_manager, builder):
         def build_thread():
             results = builder.build_services(configs, force=force)
             success = sum(1 for r in results if r['status'] == 'success')
-            failed = len(results) - success
+            skipped = sum(1 for r in results if r['status'] == 'skipped')
+            failed = len(results) - success - skipped
             socketio.emit('build_complete', {
                 'success': success,
                 'failed': failed,
+                'skipped': skipped,
                 'total': len(results)
             })
 
