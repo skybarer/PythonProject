@@ -1,5 +1,5 @@
 """
-GitLab API client with improved error handling
+GitLab API client with improved error handling and branch pagination
 """
 
 import requests
@@ -138,28 +138,61 @@ class GitLabClient:
             return []
 
     def get_project_branches(self, project_id: int) -> List[str]:
-        """Get all branches for a project with error handling"""
+        """
+        Get ALL branches for a project with pagination
+        Fixed to fetch all branches, not just first page
+        """
         try:
-            response = requests.get(
-                f"{self.gitlab_url}/api/v4/projects/{project_id}/repository/branches",
-                headers=self.headers,
-                timeout=30
-            )
+            all_branches = []
+            page = 1
+            per_page = 100  # Max allowed by GitLab API
 
-            if response.status_code == 401:
-                print(f"❌ Authentication failed while fetching branches")
-                return []
-            elif response.status_code == 403:
-                print(f"❌ Access forbidden to project {project_id}")
-                return []
-            elif response.status_code == 404:
-                print(f"❌ Project {project_id} not found or has no branches")
-                return []
+            print(f"📡 Fetching branches for project {project_id}...")
 
-            response.raise_for_status()
-            branches = response.json()
-            return [b['name'] for b in branches]
+            while True:
+                response = requests.get(
+                    f"{self.gitlab_url}/api/v4/projects/{project_id}/repository/branches",
+                    headers=self.headers,
+                    params={
+                        "per_page": per_page,
+                        "page": page
+                    },
+                    timeout=30
+                )
+
+                if response.status_code == 401:
+                    print(f"❌ Authentication failed while fetching branches")
+                    return []
+                elif response.status_code == 403:
+                    print(f"❌ Access forbidden to project {project_id}")
+                    return []
+                elif response.status_code == 404:
+                    print(f"❌ Project {project_id} not found or has no branches")
+                    return []
+
+                response.raise_for_status()
+                branches = response.json()
+
+                if not branches:
+                    break
+
+                # Extract branch names
+                branch_names = [b['name'] for b in branches]
+                all_branches.extend(branch_names)
+
+                print(f"   Page {page}: {len(branch_names)} branches")
+
+                # Check if there are more pages
+                if len(branches) < per_page:
+                    break
+
+                page += 1
+
+            print(f"✅ Total branches fetched: {len(all_branches)}")
+            return all_branches
 
         except Exception as e:
             print(f"❌ Error fetching branches: {e}")
+            import traceback
+            traceback.print_exc()
             return []

@@ -1439,17 +1439,23 @@ HTML_TEMPLATE = r"""
             if (project.branchesLoaded || project.branchesLoading) {
                 return;
             }
-
+        
             if (branchCache[project.id]) {
                 project.branches = branchCache[project.id];
                 project.branchesLoaded = true;
+                
+                // CRITICAL: Set selectedBranch to default if not set
+                if (!project.selectedBranch) {
+                    project.selectedBranch = project.default_branch;
+                }
+                
                 renderBranchSelection(index);
                 return;
             }
-
+        
             project.branchesLoading = true;
             updateBranchCell(index, '⏳ Loading branches...');
-
+        
             try {
                 const response = await fetch(`/api/project/${project.id}/branches`);
                 const data = await response.json();
@@ -1457,21 +1463,20 @@ HTML_TEMPLATE = r"""
                 console.log('Branch API response:', data);
                 
                 if (data.branches && data.branches.length > 0) {
-                    // API returns branches as objects with { name, is_default, display }
                     project.branches = data.branches;
                     project.default_branch = data.default_branch || project.default_branch;
                     
-                    // 🔴 ADD THESE LINES:
-                    // Set the default branch as selected if not already set
-                    if (!project.selectedBranch || project.selectedBranch === project.default_branch) {
+                    // CRITICAL: Set selectedBranch to default
+                    if (!project.selectedBranch) {
                         project.selectedBranch = project.default_branch;
                     }
                     
                     project.branchesLoaded = true;
                     branchCache[project.id] = project.branches;
                     
-                    console.log(`Loaded ${project.branches.length} branches for ${project.name}`);
-                    console.log(`Default branch: ${project.default_branch}, Selected: ${project.selectedBranch}`); // 🔴 ADD THIS
+                    console.log(`✅ Loaded ${project.branches.length} branches for ${project.name}`);
+                    console.log(`   Default: ${project.default_branch}`);
+                    console.log(`   Selected: ${project.selectedBranch}`);
                     
                     renderBranchSelection(index);
                 } else {
@@ -1503,13 +1508,15 @@ HTML_TEMPLATE = r"""
                 return;
             }
             
-             if (!project.selectedBranch) {
+            // CRITICAL: Ensure selectedBranch is set to default if not already set
+            if (!project.selectedBranch) {
                 project.selectedBranch = project.default_branch;
-             }
+            }
             
             console.log(`Rendering branches for ${project.name}:`);
             console.log(`  Default: ${project.default_branch}`);
             console.log(`  Selected: ${project.selectedBranch}`);
+            console.log(`  Total branches: ${project.branches.length}`);
         
             const searchId = `branch-search-${index}`;
             const selectId = `branch-select-${index}`;
@@ -1530,11 +1537,14 @@ HTML_TEMPLATE = r"""
                             onchange="handleBranchChange(${index}, this.value)">
             `;
         
-            // FIX: Access branch.name instead of treating branch as a string
+            // CRITICAL FIX: Access branch.name correctly
             project.branches.forEach(branch => {
-                const branchName = branch.name;  // <-- KEY FIX HERE
+                const branchName = branch.name;  // Extract name from branch object
                 const isDefault = branch.is_default || branchName === project.default_branch;
                 const selected = branchName === project.selectedBranch ? 'selected' : '';
+                
+                console.log(`  Branch: ${branchName}, isDefault: ${isDefault}, selected: ${selected}`);
+                
                 html += `<option value="${branchName}" ${selected} data-branch="${branchName.toLowerCase()}" style="padding: 6px;">
                     ${branchName}${isDefault ? ' 🌟' : ''}
                 </option>`;
@@ -1548,7 +1558,7 @@ HTML_TEMPLATE = r"""
         
             cell.innerHTML = html;
         }
-
+        
         function filterBranches(index) {
             const searchInput = document.getElementById(`branch-search-${index}`);
             const select = document.getElementById(`branch-select-${index}`);
@@ -1616,6 +1626,7 @@ HTML_TEMPLATE = r"""
 
         function handleBranchChange(index, value) {
             projectsData[index].selectedBranch = value;
+            console.log(`Branch changed for ${projectsData[index].name}: ${value}`);
         }
 
         function toggleSelectAll() {
@@ -1653,17 +1664,25 @@ HTML_TEMPLATE = r"""
                 const index = parseInt(checkbox.dataset.index);
                 const project = projectsData[index];
                 
-                if (!project.branchesLoaded || !project.selectedBranch) {
-                    console.warn(`Service ${project.name} selected but branch not loaded`);
+                if (!project.branchesLoaded) {
+                    console.warn(`Service ${project.name} selected but branches not loaded`);
                     return;
                 }
                 
-                // Include project_id and default_branch for the build API
+                // Ensure selectedBranch is set
+                const selectedBranch = project.selectedBranch || project.default_branch;
+                
+                console.log(`Selected service: ${project.name}`);
+                console.log(`  Branch: ${selectedBranch}`);
+                console.log(`  Default: ${project.default_branch}`);
+                console.log(`  Project ID: ${project.id}`);
+                console.log(`  Repo URL: ${project.http_url_to_repo}`);
+                
                 selected.push({
                     project_id: project.id,
                     name: project.name,
                     repo_url: project.http_url_to_repo,
-                    branch: project.selectedBranch,
+                    branch: selectedBranch,
                     default_branch: project.default_branch
                 });
             });
@@ -1678,7 +1697,8 @@ HTML_TEMPLATE = r"""
                 alert('Please select at least one service');
                 return;
             }
-
+        
+            // Validate all selected services have branches loaded
             const checkboxes = document.querySelectorAll('.service-checkbox:checked');
             let missingBranches = [];
             
@@ -1689,21 +1709,31 @@ HTML_TEMPLATE = r"""
                     missingBranches.push(project.name);
                 }
             });
-
+        
             if (missingBranches.length > 0) {
                 alert(`Please wait for branches to load for: ${missingBranches.join(', ')}`);
                 return;
             }
-
+        
+            // Log build configuration
+            console.log('\n=== Starting Build ===');
+            console.log('Selected Services:');
+            selectedServices.forEach(service => {
+                console.log(`  ${service.name}:`);
+                console.log(`    Branch: ${service.branch}`);
+                console.log(`    Default: ${service.default_branch}`);
+                console.log(`    Repo: ${service.repo_url}`);
+            });
+        
             const groupId = document.getElementById('groupSelect').value;
             const force = document.getElementById('forceRebuild').checked;
             const maxWorkers = parseInt(document.getElementById('maxWorkers').value);
-
+        
             document.getElementById('logOutput').innerHTML = '';
             updateStatus(`Building ${selectedServices.length} services...`);
-
+        
             disableBuildButtons();
-
+        
             try {
                 const response = await fetch('/api/build', {
                     method: 'POST',
@@ -1715,17 +1745,19 @@ HTML_TEMPLATE = r"""
                         max_workers: maxWorkers
                     })
                 });
-
+        
                 const data = await response.json();
-
+        
                 if (response.ok) {
                     updateStatus(data.message);
+                    console.log('✅ Build started successfully');
                 } else {
                     alert('Error: ' + data.error);
                     updateStatus('Build failed to start');
                     enableBuildButtons();
                 }
             } catch (error) {
+                console.error('Error starting build:', error);
                 alert('Error starting build: ' + error);
                 enableBuildButtons();
             }
