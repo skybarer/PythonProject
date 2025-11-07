@@ -1,3 +1,10 @@
+"""
+Enhanced UI templates with:
+1. Per-service branch selection
+2. Fixed button loading states
+3. Better UX for multi-branch builds
+"""
+
 HTML_TEMPLATE = r"""
 <!DOCTYPE html>
 <html lang="en">
@@ -15,7 +22,7 @@ HTML_TEMPLATE = r"""
             padding: 20px;
         }
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             background: white;
             border-radius: 12px;
@@ -73,51 +80,109 @@ HTML_TEMPLATE = r"""
             transition: all 0.3s;
             margin-right: 10px;
             margin-bottom: 10px;
+            position: relative;
+            display: inline-block;
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
         .btn-primary {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
-        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4); }
+        .btn-primary:hover:not(:disabled) { 
+            transform: translateY(-2px); 
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4); 
+        }
         .btn-secondary {
             background: #6c757d;
             color: white;
         }
-        .btn-secondary:hover { background: #5a6268; }
+        .btn-secondary:hover:not(:disabled) { background: #5a6268; }
         .btn-danger {
             background: #dc3545;
             color: white;
         }
-        .btn-danger:hover { background: #c82333; }
+        .btn-danger:hover:not(:disabled) { background: #c82333; }
         .btn-success {
             background: #28a745;
             color: white;
         }
-        .btn-success:hover { background: #218838; }
+        .btn-success:hover:not(:disabled) { background: #218838; }
         .btn-info {
             background: #17a2b8;
             color: white;
         }
-        .btn-info:hover { background: #138496; }
+        .btn-info:hover:not(:disabled) { background: #138496; }
+
+        /* Loading spinner - FIXED */
+        .btn.loading {
+            pointer-events: none;
+        }
+        .btn.loading::after {
+            content: "";
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            top: 50%;
+            right: 10px;
+            margin-top: -8px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
         #servicesList {
             border: 1px solid #ddd;
             border-radius: 6px;
             padding: 10px;
-            max-height: 300px;
+            max-height: 400px;
             overflow-y: auto;
             background: white;
         }
         .service-item {
-            padding: 8px;
-            margin-bottom: 5px;
+            padding: 12px;
+            margin-bottom: 8px;
             border-radius: 4px;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 2px solid transparent;
         }
-        .service-item:hover { background: #e9ecef; }
+        .service-item:hover { 
+            background: #e9ecef; 
+            border-color: #dee2e6;
+        }
         .service-item.selected {
             background: #667eea;
             color: white;
+            border-color: #5568d3;
+        }
+        .service-name {
+            font-weight: 500;
+            flex: 1;
+        }
+        .branch-selector {
+            margin-left: 10px;
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+            background: white;
+            color: #333;
+            min-width: 120px;
+        }
+        .service-item.selected .branch-selector {
+            border-color: #fff;
+            background: #fff;
         }
         #logOutput {
             background: #1e1e1e;
@@ -218,19 +283,27 @@ HTML_TEMPLATE = r"""
             color: #dc3545;
             font-weight: 600;
         }
+        .branch-info {
+            font-size: 11px;
+            color: #999;
+            margin-top: 5px;
+        }
+        .service-item.selected .branch-info {
+            color: rgba(255,255,255,0.8);
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>🚀 Microservice Build Automation</h1>
-            <p>Parallel builds with intelligent caching for Spring Boot services</p>
+            <p>Parallel builds with per-service branch selection and intelligent caching</p>
         </div>
 
         <div class="content">
             <div class="section">
                 <h2>System Prerequisites</h2>
-                <button class="btn btn-info" onclick="checkPrerequisites()">Check Git & Maven</button>
+                <button class="btn btn-info" id="btnCheckPrereq" onclick="checkPrerequisites()">Check Git & Maven</button>
                 <div id="prereqStatus" class="prereq-status" style="display: none;"></div>
 
                 <div style="margin-top: 15px;">
@@ -239,7 +312,7 @@ HTML_TEMPLATE = r"""
                         <label>Maven Path (optional - e.g., C:\path\to\apache-maven-3.9.9\bin\mvn.cmd)</label>
                         <input type="text" id="mavenPath" placeholder="Leave empty for auto-detection">
                     </div>
-                    <button class="btn btn-success" onclick="setMavenPath()">Set Maven Path</button>
+                    <button class="btn btn-success" id="btnSetMaven" onclick="setMavenPath()">Set Maven Path</button>
                 </div>
             </div>
 
@@ -253,7 +326,7 @@ HTML_TEMPLATE = r"""
                     <label>Private Token</label>
                     <input type="password" id="privateToken" placeholder="Enter your GitLab private token">
                 </div>
-                <button class="btn btn-primary" onclick="connectGitLab()">Connect to GitLab</button>
+                <button class="btn btn-primary" id="btnConnect" onclick="connectGitLab()">Connect to GitLab</button>
             </div>
 
             <div class="section">
@@ -285,14 +358,14 @@ HTML_TEMPLATE = r"""
                     <input type="text" id="mavenProfiles" placeholder="e.g., prod,security">
                 </div>
 
-                <button class="btn btn-success" onclick="saveGroupSettings()">Save Group Settings</button>
-                <button class="btn btn-secondary" onclick="loadProjects()">Load Projects</button>
+                <button class="btn btn-success" id="btnSaveSettings" onclick="saveGroupSettings()">Save Group Settings</button>
+                <button class="btn btn-secondary" id="btnLoadProjects" onclick="loadProjects()">Load Projects</button>
             </div>
 
             <div class="section">
                 <h2>Build Services</h2>
                 <div class="form-group">
-                    <label>Services (Click to select multiple)</label>
+                    <label>Services (Click to select, choose branch for each)</label>
                     <div id="servicesList"></div>
                 </div>
                 <div class="checkbox-group">
@@ -303,10 +376,10 @@ HTML_TEMPLATE = r"""
                     <label>Parallel Builds</label>
                     <input type="number" id="maxWorkers" value="4" min="1" max="16">
                 </div>
-                <button class="btn btn-primary" onclick="buildSelected()">Build Selected</button>
-                <button class="btn btn-secondary" onclick="buildAll()">Build All</button>
-                <button class="btn btn-danger" onclick="clearCache()">Clear Cache</button>
-                <button class="btn btn-info" onclick="clearLogs()">Clear Logs</button>
+                <button class="btn btn-primary" id="btnBuildSelected" onclick="buildSelected()">Build Selected</button>
+                <button class="btn btn-secondary" id="btnBuildAll" onclick="buildAll()">Build All</button>
+                <button class="btn btn-danger" id="btnClearCache" onclick="clearCache()">Clear Cache</button>
+                <button class="btn btn-info" id="btnClearLogs" onclick="clearLogs()">Clear Logs</button>
             </div>
 
             <div class="section">
@@ -320,8 +393,9 @@ HTML_TEMPLATE = r"""
 
     <script>
         const socket = io();
-        let selectedServices = new Set();
+        let selectedServices = new Map(); // Changed to Map to store {name, branch, repo_url}
         let settingsFileContent = null;
+        let currentProjects = []; // Store loaded projects
 
         socket.on('log', function(data) {
             const logOutput = document.getElementById('logOutput');
@@ -334,6 +408,9 @@ HTML_TEMPLATE = r"""
             const status = `Build Complete - Success: ${data.success}, Failed: ${data.failed}, Skipped: ${data.skipped}`;
             updateStatus(status);
 
+            // Re-enable build buttons - FIXED
+            enableBuildButtons();
+
             // Show summary in logs
             const logOutput = document.getElementById('logOutput');
             logOutput.innerHTML += '<br><span style="color: #4CAF50; font-weight: bold;">========================================</span><br>';
@@ -345,6 +422,38 @@ HTML_TEMPLATE = r"""
             logOutput.innerHTML += '<span style="color: #4CAF50; font-weight: bold;">========================================</span><br>';
             logOutput.scrollTop = logOutput.scrollHeight;
         });
+
+        // Button loading helpers - FIXED
+        function setButtonLoading(buttonId, loading, text = 'Loading...') {
+            const btn = document.getElementById(buttonId);
+            if (!btn) return;
+
+            if (loading) {
+                btn.disabled = true;
+                btn.classList.add('loading');
+                if (!btn.dataset.originalText) {
+                    btn.dataset.originalText = btn.textContent;
+                }
+                btn.textContent = text;
+            } else {
+                btn.disabled = false;
+                btn.classList.remove('loading');
+                if (btn.dataset.originalText) {
+                    btn.textContent = btn.dataset.originalText;
+                    delete btn.dataset.originalText;
+                }
+            }
+        }
+
+        function disableBuildButtons() {
+            setButtonLoading('btnBuildSelected', true, 'Building...');
+            setButtonLoading('btnBuildAll', true, 'Building...');
+        }
+
+        function enableBuildButtons() {
+            setButtonLoading('btnBuildSelected', false);
+            setButtonLoading('btnBuildAll', false);
+        }
 
         // File upload handling
         const fileUploadArea = document.getElementById('fileUploadArea');
@@ -387,6 +496,7 @@ HTML_TEMPLATE = r"""
         }
 
         async function checkPrerequisites() {
+            setButtonLoading('btnCheckPrereq', true);
             updateStatus('Checking prerequisites...');
             const prereqStatus = document.getElementById('prereqStatus');
 
@@ -432,6 +542,8 @@ HTML_TEMPLATE = r"""
             } catch (error) {
                 alert('Error checking prerequisites: ' + error);
                 updateStatus('Error checking prerequisites');
+            } finally {
+                setButtonLoading('btnCheckPrereq', false);
             }
         }
 
@@ -442,6 +554,8 @@ HTML_TEMPLATE = r"""
                 alert('Please enter a Maven path');
                 return;
             }
+
+            setButtonLoading('btnSetMaven', true);
 
             try {
                 const response = await fetch('/api/set-maven-path', {
@@ -454,12 +568,14 @@ HTML_TEMPLATE = r"""
 
                 if (data.success) {
                     alert('Maven path set successfully! Click "Check Git & Maven" to verify.');
-                    checkPrerequisites();
+                    await checkPrerequisites();
                 } else {
                     alert('Failed to set Maven path: ' + data.error);
                 }
             } catch (error) {
                 alert('Error setting Maven path: ' + error);
+            } finally {
+                setButtonLoading('btnSetMaven', false);
             }
         }
 
@@ -472,6 +588,7 @@ HTML_TEMPLATE = r"""
                 return;
             }
 
+            setButtonLoading('btnConnect', true, 'Connecting...');
             updateStatus('Connecting to GitLab...');
 
             try {
@@ -500,6 +617,8 @@ HTML_TEMPLATE = r"""
             } catch (error) {
                 alert('Error connecting to GitLab: ' + error);
                 updateStatus('Connection error');
+            } finally {
+                setButtonLoading('btnConnect', false);
             }
         }
 
@@ -550,6 +669,8 @@ HTML_TEMPLATE = r"""
                 .map(p => p.trim())
                 .filter(p => p.length > 0);
 
+            setButtonLoading('btnSaveSettings', true, 'Saving...');
+
             try {
                 const response = await fetch('/api/group/settings', {
                     method: 'POST',
@@ -564,9 +685,11 @@ HTML_TEMPLATE = r"""
 
                 const data = await response.json();
                 alert(data.message);
-                checkGroupSettings();
+                await checkGroupSettings();
             } catch (error) {
                 alert('Error saving settings: ' + error);
+            } finally {
+                setButtonLoading('btnSaveSettings', false);
             }
         }
 
@@ -577,7 +700,6 @@ HTML_TEMPLATE = r"""
                 return;
             }
 
-            // Check if settings are configured
             const statusElement = document.getElementById('settingsStatus');
             if (statusElement.classList.contains('not-configured')) {
                 if (!confirm('Group settings are not configured. Do you want to continue loading projects?')) {
@@ -585,12 +707,14 @@ HTML_TEMPLATE = r"""
                 }
             }
 
+            setButtonLoading('btnLoadProjects', true, 'Loading...');
             updateStatus('Loading projects...');
 
             try {
                 const response = await fetch(`/api/projects/${groupId}`);
                 const data = await response.json();
 
+                currentProjects = data.projects;
                 const servicesList = document.getElementById('servicesList');
                 servicesList.innerHTML = '';
                 selectedServices.clear();
@@ -604,25 +728,93 @@ HTML_TEMPLATE = r"""
                 data.projects.forEach(project => {
                     const div = document.createElement('div');
                     div.className = 'service-item';
-                    div.textContent = project.name;
-                    div.onclick = () => toggleService(project.name, div);
+                    div.dataset.projectId = project.id;
+
+                    const serviceName = document.createElement('span');
+                    serviceName.className = 'service-name';
+                    serviceName.textContent = project.name;
+
+                    const branchSelect = document.createElement('select');
+                    branchSelect.className = 'branch-selector';
+                    branchSelect.onclick = (e) => e.stopPropagation();
+
+                    // Add default branch
+                    const defaultBranch = project.default_branch || 'master';
+                    const defaultOption = document.createElement('option');
+                    defaultOption.value = defaultBranch;
+                    defaultOption.textContent = `${defaultBranch} (default)`;
+                    branchSelect.appendChild(defaultOption);
+
+                    // Load branches dynamically when selected
+                    branchSelect.addEventListener('click', async function(e) {
+                        e.stopPropagation();
+                        if (this.dataset.loaded !== 'true') {
+                            try {
+                                const branchResponse = await fetch(`/api/project/${project.id}/branches`);
+                                const branchData = await branchResponse.json();
+
+                                // Clear and repopulate
+                                this.innerHTML = '';
+                                branchData.branches.forEach(branch => {
+                                    const option = document.createElement('option');
+                                    option.value = branch;
+                                    option.textContent = branch === defaultBranch ? `${branch} (default)` : branch;
+                                    this.appendChild(option);
+                                });
+                                this.value = defaultBranch;
+                                this.dataset.loaded = 'true';
+                            } catch (error) {
+                                console.error('Error loading branches:', error);
+                            }
+                        }
+                    });
+
+                    div.appendChild(serviceName);
+                    div.appendChild(branchSelect);
+
+                    div.onclick = (e) => {
+                        if (e.target === branchSelect) return;
+                        toggleService(project, div, branchSelect);
+                    };
+
                     servicesList.appendChild(div);
                 });
 
                 updateStatus(`Loaded ${data.projects.length} projects`);
             } catch (error) {
                 alert('Error loading projects: ' + error);
+            } finally {
+                setButtonLoading('btnLoadProjects', false);
             }
         }
 
-        function toggleService(serviceName, element) {
+        function toggleService(project, element, branchSelect) {
+            const serviceName = project.name;
+
             if (selectedServices.has(serviceName)) {
                 selectedServices.delete(serviceName);
                 element.classList.remove('selected');
             } else {
-                selectedServices.add(serviceName);
+                const selectedBranch = branchSelect.value;
+                selectedServices.set(serviceName, {
+                    name: serviceName,
+                    branch: selectedBranch,
+                    repo_url: project.http_url_to_repo
+                });
                 element.classList.add('selected');
             }
+
+            // Update branch when changed
+            branchSelect.addEventListener('change', function(e) {
+                e.stopPropagation();
+                if (selectedServices.has(serviceName)) {
+                    selectedServices.set(serviceName, {
+                        name: serviceName,
+                        branch: this.value,
+                        repo_url: project.http_url_to_repo
+                    });
+                }
+            });
         }
 
         async function buildSelected() {
@@ -638,13 +830,19 @@ HTML_TEMPLATE = r"""
             document.getElementById('logOutput').innerHTML = '';
             updateStatus(`Building ${selectedServices.size} services...`);
 
+            // Disable build buttons and show loading - FIXED
+            disableBuildButtons();
+
             try {
+                // Convert Map to array of build configs
+                const buildConfigs = Array.from(selectedServices.values());
+
                 const response = await fetch('/api/build', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         group_id: groupId,
-                        services: Array.from(selectedServices),
+                        build_configs: buildConfigs,  // Send with branch info
                         force: force,
                         max_workers: maxWorkers
                     })
@@ -657,9 +855,11 @@ HTML_TEMPLATE = r"""
                 } else {
                     alert('Error: ' + data.error);
                     updateStatus('Build failed to start');
+                    enableBuildButtons();
                 }
             } catch (error) {
                 alert('Error starting build: ' + error);
+                enableBuildButtons();
             }
         }
 
@@ -676,10 +876,22 @@ HTML_TEMPLATE = r"""
                 return;
             }
 
+            // Select all services with their respective branches
             selectedServices.clear();
             servicesList.forEach(item => {
-                selectedServices.add(item.textContent);
-                item.classList.add('selected');
+                const projectId = item.dataset.projectId;
+                const project = currentProjects.find(p => p.id == projectId);
+                if (project) {
+                    const branchSelect = item.querySelector('.branch-selector');
+                    const selectedBranch = branchSelect ? branchSelect.value : (project.default_branch || 'master');
+
+                    selectedServices.set(project.name, {
+                        name: project.name,
+                        branch: selectedBranch,
+                        repo_url: project.http_url_to_repo
+                    });
+                    item.classList.add('selected');
+                }
             });
 
             await buildSelected();
@@ -688,6 +900,8 @@ HTML_TEMPLATE = r"""
         async function clearCache() {
             if (!confirm('Clear build cache? Next build will rebuild everything.')) return;
 
+            setButtonLoading('btnClearCache', true, 'Clearing...');
+
             try {
                 const response = await fetch('/api/cache/clear', {method: 'POST'});
                 const data = await response.json();
@@ -695,6 +909,8 @@ HTML_TEMPLATE = r"""
                 updateStatus('Cache cleared');
             } catch (error) {
                 alert('Error clearing cache: ' + error);
+            } finally {
+                setButtonLoading('btnClearCache', false);
             }
         }
 
@@ -709,7 +925,6 @@ HTML_TEMPLATE = r"""
 
         // Load saved configuration on page load
         window.onload = function() {
-            // Check if there's a saved configuration
             fetch('/api/config')
                 .then(response => response.json())
                 .then(data => {
