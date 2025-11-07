@@ -1,8 +1,13 @@
 """
-UI templates with improved flow:
-1. Show services only (no branches initially)
-2. Load branches ONLY when service is selected
-3. Branch search/filter for 100+ branches
+UI templates with enterprise-scale improvements:
+1. Group filter for large number of groups
+2. Service search/filter for hundreds of microservices
+3. Config file dropdown with refresh
+4. Save/clear credentials
+5. Profile management
+6. Better branch display with default badge
+7. Responsive table with scroll
+8. Modern UI with better visual hierarchy
 """
 
 HTML_TEMPLATE = r"""
@@ -13,65 +18,129 @@ HTML_TEMPLATE = r"""
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Microservice Build Automation</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        * { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
+        }
+        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             padding: 20px;
         }
+        
         .container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
             background: white;
-            border-radius: 12px;
+            border-radius: 16px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
             overflow: hidden;
         }
+        
         .header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 30px;
+            padding: 40px 30px;
             text-align: center;
         }
-        .header h1 { font-size: 2em; margin-bottom: 10px; }
-        .header p { opacity: 0.9; }
-        .content { padding: 30px; }
+        
+        .header h1 { 
+            font-size: 2.5em; 
+            margin-bottom: 12px;
+            font-weight: 700;
+        }
+        
+        .header p { 
+            opacity: 0.95;
+            font-size: 1.1em;
+        }
+        
+        .content { 
+            padding: 30px;
+            max-height: calc(100vh - 250px);
+            overflow-y: auto;
+        }
+        
         .section {
             background: #f8f9fa;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            border: 1px solid #e9ecef;
         }
+        
         .section h2 {
-            font-size: 1.3em;
-            margin-bottom: 15px;
+            font-size: 1.4em;
+            margin-bottom: 20px;
             color: #333;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
-        .form-group { margin-bottom: 15px; }
+        
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .form-group { 
+            margin-bottom: 16px; 
+        }
+        
         label {
             display: block;
-            margin-bottom: 5px;
+            margin-bottom: 6px;
             font-weight: 600;
-            color: #555;
-        }
-        input, select, textarea {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
+            color: #495057;
             font-size: 14px;
         }
-        input:focus, select:focus {
+        
+        input, select, textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        
+        input:focus, select:focus, textarea:focus {
             outline: none;
             border-color: #667eea;
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
+        
+        .search-input {
+            position: relative;
+        }
+        
+        .search-input input {
+            padding-left: 40px;
+        }
+        
+        .search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6c757d;
+            font-size: 18px;
+        }
+        
         .btn {
             padding: 10px 20px;
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
             font-size: 14px;
             font-weight: 600;
             cursor: pointer;
@@ -79,24 +148,61 @@ HTML_TEMPLATE = r"""
             margin-right: 10px;
             margin-bottom: 10px;
             position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
         }
+        
         .btn:disabled {
             opacity: 0.6;
             cursor: not-allowed;
         }
+        
         .btn-primary {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
-        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4); }
-        .btn-secondary { background: #6c757d; color: white; }
-        .btn-secondary:hover:not(:disabled) { background: #5a6268; }
-        .btn-danger { background: #dc3545; color: white; }
-        .btn-danger:hover:not(:disabled) { background: #c82333; }
-        .btn-success { background: #28a745; color: white; }
-        .btn-success:hover:not(:disabled) { background: #218838; }
-        .btn-info { background: #17a2b8; color: white; }
-        .btn-info:hover:not(:disabled) { background: #138496; }
+        
+        .btn-primary:hover:not(:disabled) { 
+            transform: translateY(-2px); 
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4); 
+        }
+        
+        .btn-secondary { 
+            background: #6c757d; 
+            color: white; 
+        }
+        
+        .btn-secondary:hover:not(:disabled) { 
+            background: #5a6268; 
+        }
+        
+        .btn-danger { 
+            background: #dc3545; 
+            color: white; 
+        }
+        
+        .btn-danger:hover:not(:disabled) { 
+            background: #c82333; 
+        }
+        
+        .btn-success { 
+            background: #28a745; 
+            color: white; 
+        }
+        
+        .btn-success:hover:not(:disabled) { 
+            background: #218838; 
+        }
+        
+        .btn-info { 
+            background: #17a2b8; 
+            color: white; 
+        }
+        
+        .btn-info:hover:not(:disabled) { 
+            background: #138496; 
+        }
         
         .btn.loading {
             pointer-events: none;
@@ -121,56 +227,70 @@ HTML_TEMPLATE = r"""
             to { transform: rotate(360deg); }
         }
         
+        .table-container {
+            max-height: 600px;
+            overflow: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            background: white;
+        }
+        
         #servicesTable {
             width: 100%;
             border-collapse: collapse;
             background: white;
-            border-radius: 6px;
-            overflow: hidden;
         }
         
         #servicesTable thead {
             background: #667eea;
             color: white;
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }
         
         #servicesTable th {
-            padding: 12px;
+            padding: 14px 12px;
             text-align: left;
             font-weight: 600;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         
         #servicesTable td {
-            padding: 10px 12px;
-            border-bottom: 1px solid #eee;
+            padding: 12px;
+            border-bottom: 1px solid #f1f3f5;
+            font-size: 14px;
         }
         
-        #servicesTable tr:hover {
+        #servicesTable tbody tr:hover {
             background: #f8f9fa;
         }
         
         .service-checkbox {
-            width: 20px;
-            height: 20px;
+            width: 18px;
+            height: 18px;
             cursor: pointer;
         }
         
         .branch-container {
             position: relative;
             width: 100%;
+            min-width: 250px;
         }
         
         .branch-search-wrapper {
             position: relative;
-            margin-bottom: 5px;
+            margin-bottom: 6px;
         }
         
         .branch-search {
             width: 100%;
             padding: 6px 10px;
             padding-right: 30px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
             font-size: 13px;
         }
         
@@ -180,22 +300,14 @@ HTML_TEMPLATE = r"""
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
         
-        .search-icon {
-            position: absolute;
-            right: 8px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #999;
-            pointer-events: none;
-        }
-        
         .branch-select {
             width: 100%;
             padding: 6px 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
             font-size: 13px;
-            max-height: 200px;
+            max-height: 150px;
+            background: white;
         }
         
         .branch-select:disabled {
@@ -203,30 +315,59 @@ HTML_TEMPLATE = r"""
             cursor: not-allowed;
         }
         
-        .branch-option {
-            padding: 4px 0;
+        .branch-select option {
+            padding: 6px;
         }
         
         .service-name {
             font-weight: 500;
-            color: #333;
+            color: #212529;
         }
         
         .default-branch-badge {
             display: inline-block;
             background: #28a745;
             color: white;
-            padding: 2px 8px;
+            padding: 3px 10px;
             border-radius: 12px;
             font-size: 11px;
             margin-left: 8px;
+            font-weight: 600;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .badge-success {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .badge-danger {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .badge-info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        
+        .badge-warning {
+            background: #fff3cd;
+            color: #856404;
         }
         
         .select-all-container {
             background: #e7f3ff;
-            padding: 10px;
-            border-radius: 6px;
-            margin-bottom: 10px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 12px;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -240,122 +381,241 @@ HTML_TEMPLATE = r"""
         #logOutput {
             background: #1e1e1e;
             color: #d4d4d4;
-            padding: 15px;
-            border-radius: 6px;
-            height: 400px;
+            padding: 20px;
+            border-radius: 8px;
+            height: 500px;
             overflow-y: auto;
             font-family: 'Courier New', monospace;
-            font-size: 12px;
+            font-size: 13px;
             line-height: 1.6;
             white-space: pre-wrap;
             word-wrap: break-word;
         }
+        
         .status-bar {
-            background: #f8f9fa;
-            padding: 15px;
-            border-top: 1px solid #dee2e6;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 16px;
             text-align: center;
             font-weight: 600;
-            color: #666;
+            color: white;
+            font-size: 14px;
         }
+        
         .checkbox-group {
             display: flex;
             align-items: center;
-            margin-bottom: 15px;
+            margin-bottom: 16px;
         }
+        
         .checkbox-group input[type="checkbox"] {
             width: auto;
             margin-right: 8px;
         }
+        
         .file-upload-area {
-            border: 2px dashed #ddd;
-            border-radius: 6px;
-            padding: 20px;
+            border: 2px dashed #dee2e6;
+            border-radius: 8px;
+            padding: 30px;
             text-align: center;
             cursor: pointer;
             transition: all 0.3s;
             background: white;
         }
+        
         .file-upload-area:hover {
             border-color: #667eea;
             background: #f8f9ff;
         }
+        
         .file-upload-area.dragover {
             border-color: #667eea;
             background: #f0f3ff;
+            border-style: solid;
         }
+        
         .file-info {
-            margin-top: 10px;
-            padding: 10px;
+            margin-top: 12px;
+            padding: 12px;
             background: #e7f3ff;
-            border-radius: 4px;
+            border-radius: 6px;
             font-size: 13px;
         }
-        .settings-status {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-            margin-left: 10px;
-        }
-        .settings-status.configured {
-            background: #d4edda;
-            color: #155724;
-        }
-        .settings-status.not-configured {
-            background: #f8d7da;
-            color: #721c24;
-        }
-        .group-info {
-            font-size: 13px;
-            color: #666;
-            margin-top: 5px;
-        }
+        
         .prereq-status {
             background: white;
-            border-radius: 6px;
-            padding: 10px;
-            margin-top: 10px;
-            font-size: 13px;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 16px;
+            border: 1px solid #e9ecef;
         }
+        
         .prereq-item {
             display: flex;
             justify-content: space-between;
-            padding: 5px 0;
-            border-bottom: 1px solid #eee;
+            padding: 10px 0;
+            border-bottom: 1px solid #f1f3f5;
         }
-        .prereq-item:last-child { border-bottom: none; }
-        .prereq-ok { color: #28a745; font-weight: 600; }
-        .prereq-error { color: #dc3545; font-weight: 600; }
+        
+        .prereq-item:last-child { 
+            border-bottom: none; 
+        }
+        
+        .prereq-ok { 
+            color: #28a745; 
+            font-weight: 600; 
+        }
+        
+        .prereq-error { 
+            color: #dc3545; 
+            font-weight: 600; 
+        }
+        
         .loading-spinner {
             text-align: center;
-            padding: 20px;
-            color: #666;
+            padding: 40px;
+            color: #6c757d;
         }
+        
         .info-badge {
             display: inline-block;
             background: #17a2b8;
             color: white;
-            padding: 2px 8px;
+            padding: 4px 12px;
             border-radius: 12px;
-            font-size: 11px;
-            margin-left: 8px;
-        }
-        .branch-loading {
             font-size: 12px;
+            margin-left: 8px;
+            font-weight: 600;
+        }
+        
+        .branch-loading {
+            font-size: 13px;
             color: #17a2b8;
             font-style: italic;
         }
+        
         .branch-count {
             font-size: 11px;
-            color: #666;
-            margin-top: 2px;
+            color: #6c757d;
+            margin-top: 4px;
         }
+        
         .no-branches {
-            font-size: 12px;
-            color: #999;
+            font-size: 13px;
+            color: #6c757d;
             font-style: italic;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 16px;
+            border: 1px solid #e9ecef;
+            margin-bottom: 16px;
+        }
+        
+        .card-title {
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #333;
+        }
+        
+        .refresh-btn {
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        
+        .refresh-btn:hover {
+            background: #f8f9fa;
+        }
+        
+        .credentials-saved {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .profile-chip {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 12px;
+            margin: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .profile-chip:hover {
+            background: #5568d3;
+        }
+        
+        .profile-chip .remove {
+            margin-left: 6px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #f1f3f5;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #adb5bd;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #868e96;
+        }
+        
+        .icon {
+            font-size: 18px;
+        }
+        
+        .collapsible-section {
+            margin-bottom: 20px;
+        }
+        
+        .collapsible-header {
+            background: #667eea;
+            color: white;
+            padding: 12px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s;
+        }
+        
+        .collapsible-header:hover {
+            background: #5568d3;
+        }
+        
+        .collapsible-content {
+            padding: 20px;
+            border: 1px solid #e9ecef;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            background: white;
+        }
+        
+        .hidden {
+            display: none;
         }
     </style>
 </head>
@@ -363,73 +623,147 @@ HTML_TEMPLATE = r"""
     <div class="container">
         <div class="header">
             <h1>🚀 Microservice Build Automation</h1>
-            <p>Select services → Load branches → Choose branch → Build</p>
+            <p>Enterprise-scale microservice build management</p>
         </div>
 
         <div class="content">
-            <div class="section">
-                <h2>System Prerequisites</h2>
-                <button class="btn btn-info" id="btnCheckPrereq" onclick="checkPrerequisites()">Check Git, Java & Maven</button>
-                <div id="prereqStatus" class="prereq-status" style="display: none;"></div>
+            <!-- System Prerequisites Section -->
+            <div class="collapsible-section">
+                <div class="collapsible-header" onclick="toggleSection('prereqSection')">
+                    <span><span class="icon">⚙️</span> System Prerequisites</span>
+                    <span id="prereqToggle">▼</span>
+                </div>
+                <div id="prereqSection" class="collapsible-content">
+                    <button class="btn btn-info" id="btnCheckPrereq" onclick="checkPrerequisites()">
+                        <span class="icon">🔍</span> Check Git & Maven
+                    </button>
+                    <div id="prereqStatus" class="prereq-status" style="display: none;"></div>
 
-                <div style="margin-top: 15px;">
-                    <h3 style="font-size: 1.1em; margin-bottom: 10px;">Manual Configuration (if not detected)</h3>
-                    <div class="form-group">
-                        <label>Maven Path (optional - e.g., C:\path\to\apache-maven-3.9.9\bin\mvn.cmd)</label>
-                        <input type="text" id="mavenPath" placeholder="Leave empty for auto-detection">
+                    <div style="margin-top: 20px;">
+                        <h3 style="font-size: 1.1em; margin-bottom: 12px; font-weight: 600;">Manual Configuration</h3>
+                        <div class="form-group">
+                            <label>Maven Path (optional)</label>
+                            <input type="text" id="mavenPath" placeholder="C:\path\to\apache-maven-3.9.9\bin\mvn.cmd">
+                        </div>
+                        <button class="btn btn-success" id="btnSetMaven" onclick="setMavenPath()">
+                            <span class="icon">✔️</span> Set Maven Path
+                        </button>
                     </div>
-                    <button class="btn btn-success" id="btnSetMaven" onclick="setMavenPath()">Set Maven Path</button>
                 </div>
             </div>
 
+            <!-- GitLab Configuration Section -->
             <div class="section">
-                <h2>GitLab Configuration</h2>
-                <div class="form-group">
-                    <label>GitLab URL</label>
-                    <input type="text" id="gitlabUrl" placeholder="https://gitlab.com" value="https://gitlab.com">
+                <h2><span class="icon">🔗</span> GitLab Configuration</h2>
+                
+                <div id="savedCredentials" style="display: none;" class="credentials-saved">
+                    <span>✅ Credentials saved and connected</span>
+                    <button class="btn btn-danger" onclick="clearCredentials()">Clear Credentials</button>
                 </div>
-                <div class="form-group">
-                    <label>Private Token</label>
-                    <input type="password" id="privateToken" placeholder="Enter your GitLab private token">
+                
+                <div id="credentialsForm">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>GitLab URL</label>
+                            <input type="text" id="gitlabUrl" placeholder="https://gitlab.com" value="https://gitlab.com">
+                        </div>
+                        <div class="form-group">
+                            <label>Private Token</label>
+                            <input type="password" id="privateToken" placeholder="Enter your GitLab private token">
+                        </div>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="saveCredentials">
+                        <label for="saveCredentials" style="margin: 0;">Save credentials locally (encrypted in browser)</label>
+                    </div>
+                    <button class="btn btn-primary" id="btnConnect" onclick="connectGitLab()">
+                        <span class="icon">🔌</span> Connect to GitLab
+                    </button>
                 </div>
-                <button class="btn btn-primary" id="btnConnect" onclick="connectGitLab()">Connect to GitLab</button>
             </div>
 
+            <!-- Group Configuration Section -->
             <div class="section">
-                <h2>Group Configuration</h2>
+                <h2><span class="icon">📁</span> Group & Build Configuration</h2>
+                
                 <div class="form-group">
-                    <label>Group <span id="settingsStatus" class="settings-status not-configured">Not Configured</span></label>
-                    <select id="groupSelect" onchange="checkGroupSettings()">
+                    <label>Search Groups <span id="groupCount" class="badge badge-info" style="display: none;">0 groups</span></label>
+                    <div class="search-input">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="groupSearch" placeholder="Filter groups..." oninput="filterGroups()">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Group <span id="settingsStatus" class="badge badge-danger">Not Configured</span></label>
+                    <select id="groupSelect" size="8" onchange="checkGroupSettings()" style="min-height: 150px;">
                         <option value="">-- Select a group --</option>
                     </select>
-                    <div class="group-info" id="groupInfo"></div>
                 </div>
 
-                <div class="form-group">
-                    <label>Maven Settings File (settings.xml)</label>
-                    <div class="file-upload-area" id="fileUploadArea" onclick="document.getElementById('settingsFile').click()">
-                        <div>📁 Click or drag to upload settings.xml</div>
-                        <input type="file" id="settingsFile" accept=".xml" style="display: none;" onchange="handleFileSelect(event)">
+                <div class="card">
+                    <div class="card-title">Maven Configuration</div>
+                    
+                    <div class="form-group">
+                        <label>
+                            Settings File (settings.xml)
+                            <span class="refresh-btn" onclick="refreshSettingsFiles()" title="Refresh list">🔄</span>
+                        </label>
+                        <select id="settingsFileDropdown" onchange="handleSettingsFileSelection()">
+                            <option value="">-- Select existing or upload new --</option>
+                        </select>
                     </div>
-                    <div id="fileInfo" class="file-info" style="display: none;"></div>
-                </div>
+                    
+                    <div class="form-group">
+                        <label>Or Upload New Settings File</label>
+                        <div class="file-upload-area" id="fileUploadArea" onclick="document.getElementById('settingsFile').click()">
+                            <div>📄 Click or drag to upload settings.xml</div>
+                            <input type="file" id="settingsFile" accept=".xml" style="display: none;" onchange="handleFileSelect(event)">
+                        </div>
+                        <div id="fileInfo" class="file-info" style="display: none;"></div>
+                    </div>
 
-                <div class="form-group">
-                    <label>JVM Options</label>
-                    <input type="text" id="jvmOptions" placeholder="-Xmx2G -XX:+UseParallelGC" value="-Xmx2G -XX:+UseParallelGC">
-                </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>JVM Options</label>
+                            <input type="text" id="jvmOptions" placeholder="-Xmx2G -XX:+UseParallelGC" value="-Xmx2G -XX:+UseParallelGC">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Maven Threads</label>
+                            <input type="number" id="mavenThreads" value="4" min="1" max="16">
+                        </div>
+                    </div>
 
-                <div class="form-group">
-                    <label>Maven Profiles (comma-separated)</label>
-                    <input type="text" id="mavenProfiles" placeholder="e.g., prod,security">
-                </div>
+                    <div class="form-group">
+                        <label>Maven Profiles</label>
+                        <input type="text" id="mavenProfilesInput" placeholder="Type profile and press Enter">
+                        <div id="profilesContainer" style="margin-top: 8px;"></div>
+                    </div>
 
-                <button class="btn btn-success" id="btnSaveSettings" onclick="saveGroupSettings()">Save Group Settings</button>
-                <button class="btn btn-secondary" id="btnLoadProjects" onclick="loadProjects()">Load Microservices</button>
+                    <button class="btn btn-success" id="btnSaveSettings" onclick="saveGroupSettings()">
+                        <span class="icon">💾</span> Save Group Settings
+                    </button>
+                    <button class="btn btn-secondary" id="btnLoadProjects" onclick="loadProjects()">
+                        <span class="icon">📦</span> Load Microservices
+                    </button>
+                </div>
             </div>
 
+            <!-- Build Services Section -->
             <div class="section">
-                <h2>Build Services <span id="projectCount" class="info-badge" style="display: none;">0 services</span></h2>
+                <h2>
+                    <span class="icon">🔨</span> Build Services 
+                    <span id="projectCount" class="info-badge" style="display: none;">0 services</span>
+                </h2>
+                
+                <div class="form-group">
+                    <label>Search Services</label>
+                    <div class="search-input">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="serviceSearch" placeholder="Filter services..." oninput="filterServices()">
+                    </div>
+                </div>
                 
                 <div class="select-all-container">
                     <div>
@@ -437,23 +771,25 @@ HTML_TEMPLATE = r"""
                         <label for="selectAllCheckbox">Select All Services</label>
                     </div>
                     <div>
-                        <span id="selectionInfo" style="font-size: 13px; color: #666; margin-right: 15px;"></span>
+                        <span id="selectionInfo" style="font-size: 13px; color: #333; font-weight: 600;"></span>
                     </div>
                 </div>
                 
-                <div style="overflow-x: auto;">
+                <div class="table-container">
                     <table id="servicesTable">
                         <thead>
                             <tr>
                                 <th style="width: 50px;">Select</th>
-                                <th>Service Name</th>
+                                <th style="min-width: 200px;">Service Name</th>
                                 <th style="width: 300px;">Branch Selection</th>
                             </tr>
                         </thead>
                         <tbody id="servicesTableBody">
                             <tr>
-                                <td colspan="3" style="text-align: center; padding: 40px; color: #999;">
-                                    No projects loaded. Please select a group and click "Load Microservices".
+                                <td colspan="3" style="text-align: center; padding: 60px; color: #6c757d;">
+                                    <div style="font-size: 48px; margin-bottom: 16px;">📦</div>
+                                    <div style="font-size: 16px;">No projects loaded</div>
+                                    <div style="font-size: 14px; margin-top: 8px;">Select a group and click "Load Microservices"</div>
                                 </td>
                             </tr>
                         </tbody>
@@ -461,35 +797,56 @@ HTML_TEMPLATE = r"""
                 </div>
                 
                 <div style="margin-top: 20px;">
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="forceRebuild">
-                        <label for="forceRebuild" style="margin-bottom: 0;">Force rebuild (ignore cache)</label>
+                    <div class="form-grid">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="forceRebuild">
+                            <label for="forceRebuild" style="margin-bottom: 0;">Force rebuild (ignore cache)</label>
+                        </div>
+                        <div class="form-group">
+                            <label>Parallel Builds</label>
+                            <input type="number" id="maxWorkers" value="4" min="1" max="16">
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>Parallel Builds</label>
-                        <input type="number" id="maxWorkers" value="4" min="1" max="16">
-                    </div>
-                    <button class="btn btn-primary" id="btnBuildSelected" onclick="buildSelected()">Build Selected</button>
-                    <button class="btn btn-secondary" id="btnBuildAll" onclick="buildAll()">Build All</button>
-                    <button class="btn btn-danger" id="btnClearCache" onclick="clearCache()">Clear Cache</button>
-                    <button class="btn btn-info" id="btnClearLogs" onclick="clearLogs()">Clear Logs</button>
+                    
+                    <button class="btn btn-primary" id="btnBuildSelected" onclick="buildSelected()">
+                        <span class="icon">🚀</span> Build Selected
+                    </button>
+                    <button class="btn btn-secondary" id="btnBuildAll" onclick="buildAll()">
+                        <span class="icon">🔨</span> Build All
+                    </button>
+                    <button class="btn btn-danger" id="btnClearCache" onclick="clearCache()">
+                        <span class="icon">🗑️</span> Clear Cache
+                    </button>
+                    <button class="btn btn-info" id="btnClearLogs" onclick="clearLogs()">
+                        <span class="icon">📋</span> Clear Logs
+                    </button>
                 </div>
             </div>
 
+            <!-- Build Log Section -->
             <div class="section">
-                <h2>Build Log</h2>
+                <h2><span class="icon">📜</span> Build Log</h2>
                 <div id="logOutput"></div>
             </div>
         </div>
 
-        <div class="status-bar" id="statusBar">Ready</div>
+        <div class="status-bar" id="statusBar">Ready to connect</div>
     </div>
 
     <script>
         const socket = io();
         let settingsFileContent = null;
         let projectsData = [];
-        let branchCache = {}; // Cache branches per project
+        let branchCache = {};
+        let allGroups = [];
+        let mavenProfiles = [];
+
+        // LocalStorage keys
+        const STORAGE_KEYS = {
+            GITLAB_URL: 'gitlab_url',
+            GITLAB_TOKEN: 'gitlab_token_encrypted',
+            CREDENTIALS_SAVED: 'credentials_saved'
+        };
 
         socket.on('log', function(data) {
             const logOutput = document.getElementById('logOutput');
@@ -509,10 +866,197 @@ HTML_TEMPLATE = r"""
             logOutput.innerHTML += '<span style="color: #4CAF50; font-weight: bold;">========================================</span><br>';
             logOutput.innerHTML += `<span style="color: #4CAF50;">✅ Success: ${data.success}</span><br>`;
             logOutput.innerHTML += `<span style="color: #f44336;">❌ Failed: ${data.failed}</span><br>`;
-            logOutput.innerHTML += `<span style="color: #FF9800;">⭐️ Skipped: ${data.skipped}</span><br>`;
+            logOutput.innerHTML += `<span style="color: #FF9800;">⭐ Skipped: ${data.skipped}</span><br>`;
             logOutput.innerHTML += '<span style="color: #4CAF50; font-weight: bold;">========================================</span><br>';
             logOutput.scrollTop = logOutput.scrollHeight;
         });
+
+        // Collapsible sections
+        function toggleSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            const toggle = document.getElementById(sectionId.replace('Section', 'Toggle'));
+            
+            if (section.classList.contains('hidden')) {
+                section.classList.remove('hidden');
+                toggle.textContent = '▼';
+            } else {
+                section.classList.add('hidden');
+                toggle.textContent = '▶';
+            }
+        }
+
+        // Maven Profiles Management
+        document.getElementById('mavenProfilesInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const value = this.value.trim();
+                if (value && !mavenProfiles.includes(value)) {
+                    mavenProfiles.push(value);
+                    renderProfiles();
+                    this.value = '';
+                }
+            }
+        });
+
+        function renderProfiles() {
+            const container = document.getElementById('profilesContainer');
+            container.innerHTML = '';
+            mavenProfiles.forEach((profile, index) => {
+                const chip = document.createElement('span');
+                chip.className = 'profile-chip';
+                chip.innerHTML = `${profile} <span class="remove" onclick="removeProfile(${index})">×</span>`;
+                container.appendChild(chip);
+            });
+        }
+
+        function removeProfile(index) {
+            mavenProfiles.splice(index, 1);
+            renderProfiles();
+        }
+
+        // Credentials Management
+        function saveCredentialsToStorage(url, token) {
+            localStorage.setItem(STORAGE_KEYS.GITLAB_URL, url);
+            // Simple encoding (in production, use proper encryption)
+            localStorage.setItem(STORAGE_KEYS.GITLAB_TOKEN, btoa(token));
+            localStorage.setItem(STORAGE_KEYS.CREDENTIALS_SAVED, 'true');
+        }
+
+        function loadCredentialsFromStorage() {
+            if (localStorage.getItem(STORAGE_KEYS.CREDENTIALS_SAVED) === 'true') {
+                const url = localStorage.getItem(STORAGE_KEYS.GITLAB_URL);
+                const encodedToken = localStorage.getItem(STORAGE_KEYS.GITLAB_TOKEN);
+                
+                if (url && encodedToken) {
+                    return {
+                        url: url,
+                        token: atob(encodedToken)
+                    };
+                }
+            }
+            return null;
+        }
+
+        function clearCredentials() {
+            if (!confirm('Clear saved credentials? You will need to re-enter them.')) return;
+            
+            localStorage.removeItem(STORAGE_KEYS.GITLAB_URL);
+            localStorage.removeItem(STORAGE_KEYS.GITLAB_TOKEN);
+            localStorage.removeItem(STORAGE_KEYS.CREDENTIALS_SAVED);
+            
+            document.getElementById('savedCredentials').style.display = 'none';
+            document.getElementById('credentialsForm').style.display = 'block';
+            document.getElementById('gitlabUrl').value = 'https://gitlab.com';
+            document.getElementById('privateToken').value = '';
+            document.getElementById('saveCredentials').checked = false;
+            
+            updateStatus('Credentials cleared');
+        }
+
+        function showSavedCredentials() {
+            document.getElementById('savedCredentials').style.display = 'flex';
+            document.getElementById('credentialsForm').style.display = 'none';
+        }
+
+        // Group filtering
+        function filterGroups() {
+            const searchTerm = document.getElementById('groupSearch').value.toLowerCase();
+            const select = document.getElementById('groupSelect');
+            const options = select.querySelectorAll('option');
+            
+            let visibleCount = 0;
+            options.forEach(option => {
+                if (option.value === '') {
+                    option.style.display = '';
+                    return;
+                }
+                
+                const text = option.textContent.toLowerCase();
+                if (text.includes(searchTerm)) {
+                    option.style.display = '';
+                    visibleCount++;
+                } else {
+                    option.style.display = 'none';
+                }
+            });
+            
+            const badge = document.getElementById('groupCount');
+            if (badge) {
+                if (searchTerm) {
+                    badge.textContent = `${visibleCount} of ${allGroups.length} groups`;
+                } else {
+                    badge.textContent = `${allGroups.length} groups`;
+                }
+            }
+        }
+
+        // Service filtering
+        function filterServices() {
+            const searchTerm = document.getElementById('serviceSearch').value.toLowerCase();
+            const tbody = document.getElementById('servicesTableBody');
+            const rows = tbody.querySelectorAll('tr');
+            
+            let visibleCount = 0;
+            rows.forEach(row => {
+                const nameCell = row.querySelector('.service-name');
+                if (!nameCell) {
+                    row.style.display = '';
+                    return;
+                }
+                
+                const serviceName = nameCell.textContent.toLowerCase();
+                if (serviceName.includes(searchTerm)) {
+                    row.style.display = '';
+                    visibleCount++;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+            
+            const badge = document.getElementById('projectCount');
+            if (badge && projectsData.length > 0) {
+                if (searchTerm) {
+                    badge.textContent = `${visibleCount} of ${projectsData.length} services`;
+                } else {
+                    badge.textContent = `${projectsData.length} services`;
+                }
+            }
+        }
+
+        // Settings files management
+        async function refreshSettingsFiles() {
+            try {
+                const response = await fetch('/api/settings-files');
+                const data = await response.json();
+                
+                const dropdown = document.getElementById('settingsFileDropdown');
+                dropdown.innerHTML = '<option value="">-- Select existing or upload new --</option>';
+                
+                data.files.forEach(file => {
+                    const option = document.createElement('option');
+                    option.value = file.name;
+                    option.textContent = `${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
+                    dropdown.appendChild(option);
+                });
+                
+                updateStatus(`Loaded ${data.files.length} settings files`);
+            } catch (error) {
+                console.error('Error refreshing settings files:', error);
+            }
+        }
+
+        function handleSettingsFileSelection() {
+            const dropdown = document.getElementById('settingsFileDropdown');
+            const selectedFile = dropdown.value;
+            
+            if (selectedFile) {
+                settingsFileContent = null; // Clear uploaded content
+                document.getElementById('fileInfo').style.display = 'block';
+                document.getElementById('fileInfo').innerHTML = `✓ Selected: ${selectedFile}`;
+            } else {
+                document.getElementById('fileInfo').style.display = 'none';
+            }
+        }
 
         function setButtonLoading(buttonId, loading) {
             const btn = document.getElementById(buttonId);
@@ -522,7 +1066,6 @@ HTML_TEMPLATE = r"""
                 btn.disabled = true;
                 btn.classList.add('loading');
                 btn.dataset.originalText = btn.textContent;
-                btn.textContent = 'Loading...';
             } else {
                 btn.disabled = false;
                 btn.classList.remove('loading');
@@ -588,6 +1131,7 @@ HTML_TEMPLATE = r"""
             const reader = new FileReader();
             reader.onload = function(e) {
                 settingsFileContent = e.target.result;
+                document.getElementById('settingsFileDropdown').value = ''; // Clear dropdown selection
                 document.getElementById('fileInfo').style.display = 'block';
                 document.getElementById('fileInfo').innerHTML = `✓ File loaded: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
             };
@@ -603,7 +1147,7 @@ HTML_TEMPLATE = r"""
                 const response = await fetch('/api/prerequisites');
                 const data = await response.json();
 
-                let html = '<h3 style="margin-bottom: 10px;">System Check Results:</h3>';
+                let html = '<h3 style="margin-bottom: 12px; font-weight: 600;">System Check Results:</h3>';
 
                 const gitClass = data.git.available ? 'prereq-ok' : 'prereq-error';
                 html += `<div class="prereq-item">
@@ -611,7 +1155,7 @@ HTML_TEMPLATE = r"""
                     <span class="${gitClass}">${data.git.available ? '✓ Available' : '✗ Not Found'}</span>
                 </div>`;
                 if (data.git.path) {
-                    html += `<div style="font-size: 12px; color: #666; padding: 5px 0;">Path: ${data.git.path}</div>`;
+                    html += `<div style="font-size: 12px; color: #6c757d; padding: 5px 0;">Path: ${data.git.path}</div>`;
                 }
 
                 const mavenClass = data.maven.available ? 'prereq-ok' : 'prereq-error';
@@ -620,7 +1164,7 @@ HTML_TEMPLATE = r"""
                     <span class="${mavenClass}">${data.maven.available ? '✓ Available' : '✗ Not Found'}</span>
                 </div>`;
                 if (data.maven.path) {
-                    html += `<div style="font-size: 12px; color: #666; padding: 5px 0;">Path: ${data.maven.path}</div>`;
+                    html += `<div style="font-size: 12px; color: #6c757d; padding: 5px 0;">Path: ${data.maven.path}</div>`;
                 } else {
                     html += `<div style="font-size: 12px; color: #dc3545; padding: 5px 0;">
                         ⚠️ Maven not found. Please set the path manually below.
@@ -673,6 +1217,7 @@ HTML_TEMPLATE = r"""
         async function connectGitLab() {
             const url = document.getElementById('gitlabUrl').value;
             const token = document.getElementById('privateToken').value;
+            const saveCredentials = document.getElementById('saveCredentials').checked;
 
             if (!url || !token) {
                 alert('Please enter GitLab URL and token');
@@ -692,15 +1237,28 @@ HTML_TEMPLATE = r"""
                 const data = await response.json();
 
                 if (data.success) {
+                    allGroups = data.groups;
                     const groupSelect = document.getElementById('groupSelect');
                     groupSelect.innerHTML = '<option value="">-- Select a group --</option>';
+                    
                     data.groups.forEach(group => {
                         const option = document.createElement('option');
                         option.value = group.id;
                         option.textContent = `${group.full_path} (${group.name})`;
+                        option.dataset.fullPath = group.full_path.toLowerCase();
                         groupSelect.appendChild(option);
                     });
+                    
+                    document.getElementById('groupCount').textContent = `${data.groups.length} groups`;
+                    document.getElementById('groupCount').style.display = 'inline-block';
+                    
                     updateStatus(`Connected! Loaded ${data.groups.length} groups`);
+                    
+                    // Save credentials if requested
+                    if (saveCredentials) {
+                        saveCredentialsToStorage(url, token);
+                        showSavedCredentials();
+                    }
                 } else {
                     alert('Failed to connect: ' + data.error);
                     updateStatus('Connection failed');
@@ -716,9 +1274,8 @@ HTML_TEMPLATE = r"""
         async function checkGroupSettings() {
             const groupId = document.getElementById('groupSelect').value;
             if (!groupId) {
-                document.getElementById('settingsStatus').className = 'settings-status not-configured';
+                document.getElementById('settingsStatus').className = 'badge badge-danger';
                 document.getElementById('settingsStatus').textContent = 'Not Configured';
-                document.getElementById('groupInfo').textContent = '';
                 return;
             }
 
@@ -727,15 +1284,15 @@ HTML_TEMPLATE = r"""
                 const data = await response.json();
 
                 if (data.configured) {
-                    document.getElementById('settingsStatus').className = 'settings-status configured';
+                    document.getElementById('settingsStatus').className = 'badge badge-success';
                     document.getElementById('settingsStatus').textContent = 'Configured';
                     document.getElementById('jvmOptions').value = data.settings.jvm_options || '-Xmx2G -XX:+UseParallelGC';
-                    document.getElementById('mavenProfiles').value = (data.settings.default_profiles || []).join(',');
-                    document.getElementById('groupInfo').textContent = `Settings file: ${data.settings.settings_xml_path ? '✓ Uploaded' : '✗ Not uploaded'}`;
+                    document.getElementById('mavenThreads').value = data.settings.maven_threads || 4;
+                    mavenProfiles = data.settings.default_profiles || [];
+                    renderProfiles();
                 } else {
-                    document.getElementById('settingsStatus').className = 'settings-status not-configured';
+                    document.getElementById('settingsStatus').className = 'badge badge-warning';
                     document.getElementById('settingsStatus').textContent = 'Not Configured';
-                    document.getElementById('groupInfo').textContent = 'Please upload settings.xml';
                 }
             } catch (error) {
                 console.error('Error checking group settings:', error);
@@ -749,29 +1306,36 @@ HTML_TEMPLATE = r"""
                 return;
             }
 
-            if (!settingsFileContent) {
-                alert('Please upload a settings.xml file');
+            const settingsFileName = document.getElementById('settingsFileDropdown').value;
+            
+            if (!settingsFileContent && !settingsFileName) {
+                alert('Please select or upload a settings.xml file');
                 return;
             }
 
             const jvmOptions = document.getElementById('jvmOptions').value;
-            const mavenProfiles = document.getElementById('mavenProfiles').value
-                .split(',')
-                .map(p => p.trim())
-                .filter(p => p.length > 0);
+            const mavenThreads = parseInt(document.getElementById('mavenThreads').value);
 
             setButtonLoading('btnSaveSettings', true);
 
             try {
+                const payload = {
+                    group_id: groupId,
+                    jvm_options: jvmOptions,
+                    maven_profiles: mavenProfiles,
+                    maven_threads: mavenThreads
+                };
+
+                if (settingsFileContent) {
+                    payload.settings_xml_content = settingsFileContent;
+                } else if (settingsFileName) {
+                    payload.settings_file_name = settingsFileName;
+                }
+
                 const response = await fetch('/api/group/settings', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        group_id: groupId,
-                        settings_xml_content: settingsFileContent,
-                        jvm_options: jvmOptions,
-                        maven_profiles: mavenProfiles
-                    })
+                    body: JSON.stringify(payload)
                 });
 
                 const data = await response.json();
@@ -784,7 +1348,6 @@ HTML_TEMPLATE = r"""
             }
         }
 
-        // STEP 1: Load microservices list ONLY (no branches)
         async function loadProjects() {
             const groupId = document.getElementById('groupSelect').value;
             if (!groupId) {
@@ -796,7 +1359,7 @@ HTML_TEMPLATE = r"""
             updateStatus('Loading microservices...');
 
             const tbody = document.getElementById('servicesTableBody');
-            tbody.innerHTML = '<tr><td colspan="3" class="loading-spinner">Loading microservices...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="3" class="loading-spinner">⏳ Loading microservices...</td></tr>';
 
             try {
                 const response = await fetch(`/api/projects/${groupId}`);
@@ -810,35 +1373,32 @@ HTML_TEMPLATE = r"""
                 }));
 
                 if (projectsData.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 40px; color: #999;">No projects found in this group</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 60px; color: #6c757d;"><div style="font-size: 48px; margin-bottom: 16px;">📦</div><div>No projects found in this group</div></td></tr>';
                     updateStatus('No projects found');
                     document.getElementById('projectCount').style.display = 'none';
                     return;
                 }
 
                 renderProjectsTable();
-                updateStatus(`Loaded ${projectsData.length} microservices. Select services to load branches.`);
+                updateStatus(`Loaded ${projectsData.length} microservices`);
                 document.getElementById('projectCount').textContent = `${projectsData.length} services`;
                 document.getElementById('projectCount').style.display = 'inline-block';
                 updateSelectionInfo();
             } catch (error) {
                 alert('Error loading projects: ' + error);
-                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 40px; color: #dc3545;">Error loading projects</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 60px; color: #dc3545;">❌ Error loading projects</td></tr>';
             } finally {
                 setButtonLoading('btnLoadProjects', false);
             }
         }
 
-        // STEP 2: Fetch branches ONLY when service is selected
         async function loadBranchesForProject(index) {
             const project = projectsData[index];
             
-            // Skip if already loaded or loading
             if (project.branchesLoaded || project.branchesLoading) {
                 return;
             }
 
-            // Check cache first
             if (branchCache[project.id]) {
                 project.branches = branchCache[project.id];
                 project.branchesLoaded = true;
@@ -847,7 +1407,7 @@ HTML_TEMPLATE = r"""
             }
 
             project.branchesLoading = true;
-            updateBranchCell(index, 'Loading branches...');
+            updateBranchCell(index, '⏳ Loading branches...');
 
             try {
                 const response = await fetch(`/api/project/${project.id}/branches`);
@@ -856,7 +1416,7 @@ HTML_TEMPLATE = r"""
                 if (data.branches && data.branches.length > 0) {
                     project.branches = data.branches;
                     project.branchesLoaded = true;
-                    branchCache[project.id] = data.branches; // Cache branches
+                    branchCache[project.id] = data.branches;
                     
                     renderBranchSelection(index);
                 } else {
@@ -864,7 +1424,7 @@ HTML_TEMPLATE = r"""
                 }
             } catch (error) {
                 console.error(`Error loading branches for ${project.name}:`, error);
-                updateBranchCell(index, 'Error loading branches');
+                updateBranchCell(index, '❌ Error loading branches');
             } finally {
                 project.branchesLoading = false;
             }
@@ -887,7 +1447,6 @@ HTML_TEMPLATE = r"""
                 return;
             }
 
-            // Create search input and select dropdown
             const searchId = `branch-search-${index}`;
             const selectId = `branch-select-${index}`;
             
@@ -899,7 +1458,7 @@ HTML_TEMPLATE = r"""
                                id="${searchId}"
                                placeholder="Search ${project.branches.length} branches..."
                                oninput="filterBranches(${index})">
-                        <span class="search-icon">🔍</span>
+                        <span class="search-icon" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none;">🔍</span>
                     </div>
                     <select class="branch-select" 
                             id="${selectId}" 
@@ -907,12 +1466,11 @@ HTML_TEMPLATE = r"""
                             onchange="handleBranchChange(${index}, this.value)">
             `;
 
-            // Add all branches as options
             project.branches.forEach(branch => {
                 const isDefault = branch === project.default_branch;
                 const selected = branch === project.selectedBranch ? 'selected' : '';
-                html += `<option value="${branch}" ${selected} data-branch="${branch.toLowerCase()}">
-                    ${branch}${isDefault ? ' (default)' : ''}
+                html += `<option value="${branch}" ${selected} data-branch="${branch.toLowerCase()}" style="padding: 6px;">
+                    ${branch}${isDefault ? ' 🌟' : ''}
                 </option>`;
             });
 
@@ -945,7 +1503,6 @@ HTML_TEMPLATE = r"""
                 }
             });
 
-            // Update count
             const countDiv = select.parentElement.querySelector('.branch-count');
             if (countDiv) {
                 if (searchTerm) {
@@ -963,20 +1520,17 @@ HTML_TEMPLATE = r"""
             projectsData.forEach((project, index) => {
                 const row = document.createElement('tr');
                 
-                // Checkbox cell
                 const checkboxCell = document.createElement('td');
                 checkboxCell.innerHTML = `<input type="checkbox" class="service-checkbox" data-index="${index}" onchange="handleServiceCheckboxChange(${index})">`;
                 row.appendChild(checkboxCell);
 
-                // Service name cell
                 const nameCell = document.createElement('td');
                 nameCell.innerHTML = `<span class="service-name">${project.name}</span>`;
                 row.appendChild(nameCell);
 
-                // Branch cell - empty initially
                 const branchCell = document.createElement('td');
                 branchCell.id = `branch-cell-${index}`;
-                branchCell.innerHTML = `<div style="font-size: 13px; color: #999;">Select service to load branches</div>`;
+                branchCell.innerHTML = `<div style="font-size: 13px; color: #6c757d;">Select service to load branches</div>`;
                 row.appendChild(branchCell);
 
                 tbody.appendChild(row);
@@ -987,7 +1541,6 @@ HTML_TEMPLATE = r"""
             const checkbox = document.querySelector(`.service-checkbox[data-index="${index}"]`);
             const project = projectsData[index];
             
-            // Load branches when service is selected for the first time
             if (checkbox.checked && !project.branchesLoaded && !project.branchesLoading) {
                 await loadBranchesForProject(index);
             }
@@ -1004,9 +1557,12 @@ HTML_TEMPLATE = r"""
             const checkboxes = document.querySelectorAll('.service-checkbox');
             
             checkboxes.forEach((cb, index) => {
-                cb.checked = selectAll;
-                if (selectAll) {
-                    handleServiceCheckboxChange(index);
+                const row = cb.closest('tr');
+                if (row && row.style.display !== 'none') {
+                    cb.checked = selectAll;
+                    if (selectAll) {
+                        handleServiceCheckboxChange(index);
+                    }
                 }
             });
         }
@@ -1031,7 +1587,6 @@ HTML_TEMPLATE = r"""
                 const index = parseInt(checkbox.dataset.index);
                 const project = projectsData[index];
                 
-                // Validate branch is loaded
                 if (!project.branchesLoaded || !project.selectedBranch) {
                     console.warn(`Service ${project.name} selected but branch not loaded`);
                     return;
@@ -1047,7 +1602,6 @@ HTML_TEMPLATE = r"""
             return selected;
         }
 
-        // STEP 3: Build with selected branches
         async function buildSelected() {
             const selectedServices = getSelectedServices();
             
@@ -1056,7 +1610,6 @@ HTML_TEMPLATE = r"""
                 return;
             }
 
-            // Check if all selected services have branches loaded
             const checkboxes = document.querySelectorAll('.service-checkbox:checked');
             let missingBranches = [];
             
@@ -1121,10 +1674,8 @@ HTML_TEMPLATE = r"""
                 return;
             }
 
-            // Select all checkboxes
             document.getElementById('selectAllCheckbox').checked = true;
             
-            // Load branches for all projects
             const promises = [];
             for (let i = 0; i < projectsData.length; i++) {
                 const checkbox = document.querySelector(`.service-checkbox[data-index="${i}"]`);
@@ -1138,12 +1689,10 @@ HTML_TEMPLATE = r"""
             updateSelectionInfo();
             updateStatus('Loading branches for all services...');
             
-            // Wait for all branches to load
             await Promise.all(promises);
             
             updateStatus('All branches loaded. Starting build...');
             
-            // Small delay to let UI update
             setTimeout(() => {
                 buildSelected();
             }, 500);
@@ -1175,15 +1724,34 @@ HTML_TEMPLATE = r"""
             document.getElementById('statusBar').textContent = message;
         }
 
-        window.onload = function() {
-            fetch('/api/config')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.gitlab_url) {
-                        document.getElementById('gitlabUrl').value = data.gitlab_url;
-                    }
-                })
-                .catch(error => console.error('Error loading config:', error));
+        // Initialize on load
+        window.onload = async function() {
+            // Load config
+            try {
+                const response = await fetch('/api/config');
+                const data = await response.json();
+                if (data.gitlab_url) {
+                    document.getElementById('gitlabUrl').value = data.gitlab_url;
+                }
+            } catch (error) {
+                console.error('Error loading config:', error);
+            }
+            
+            // Check for saved credentials
+            const savedCreds = loadCredentialsFromStorage();
+            if (savedCreds) {
+                document.getElementById('gitlabUrl').value = savedCreds.url;
+                document.getElementById('privateToken').value = savedCreds.token;
+                showSavedCredentials();
+                
+                // Auto-connect
+                await connectGitLab();
+            }
+            
+            // Load settings files
+            await refreshSettingsFiles();
+            
+            updateStatus('Ready to connect');
         };
     </script>
 </body>
