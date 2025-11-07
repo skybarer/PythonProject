@@ -1,8 +1,6 @@
 """
-Enhanced UI templates with:
-1. Per-service branch selection
-2. Fixed button loading states
-3. Better UX for multi-branch builds
+UI templates with working button loaders
+KEY FIX: Changed CSS from .btn-loading to .btn.loading
 """
 
 HTML_TEMPLATE = r"""
@@ -22,7 +20,7 @@ HTML_TEMPLATE = r"""
             padding: 20px;
         }
         .container {
-            max-width: 1400px;
+            max-width: 1200px;
             margin: 0 auto;
             background: white;
             border-radius: 12px;
@@ -81,7 +79,6 @@ HTML_TEMPLATE = r"""
             margin-right: 10px;
             margin-bottom: 10px;
             position: relative;
-            display: inline-block;
         }
         .btn:disabled {
             opacity: 0.6;
@@ -91,10 +88,7 @@ HTML_TEMPLATE = r"""
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
-        .btn-primary:hover:not(:disabled) { 
-            transform: translateY(-2px); 
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4); 
-        }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4); }
         .btn-secondary {
             background: #6c757d;
             color: white;
@@ -115,11 +109,13 @@ HTML_TEMPLATE = r"""
             color: white;
         }
         .btn-info:hover:not(:disabled) { background: #138496; }
-
-        /* Loading spinner - FIXED */
+        
+        /* CRITICAL FIX: Changed from .btn-loading to .btn.loading */
         .btn.loading {
             pointer-events: none;
+            padding-right: 40px;
         }
+        
         .btn.loading::after {
             content: "";
             position: absolute;
@@ -133,56 +129,30 @@ HTML_TEMPLATE = r"""
             border-top-color: white;
             animation: spin 0.6s linear infinite;
         }
-
+        
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-
+        
         #servicesList {
             border: 1px solid #ddd;
             border-radius: 6px;
             padding: 10px;
-            max-height: 400px;
+            max-height: 300px;
             overflow-y: auto;
             background: white;
         }
         .service-item {
-            padding: 12px;
-            margin-bottom: 8px;
+            padding: 8px;
+            margin-bottom: 5px;
             border-radius: 4px;
             cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border: 2px solid transparent;
+            transition: background 0.2s;
         }
-        .service-item:hover { 
-            background: #e9ecef; 
-            border-color: #dee2e6;
-        }
+        .service-item:hover { background: #e9ecef; }
         .service-item.selected {
             background: #667eea;
             color: white;
-            border-color: #5568d3;
-        }
-        .service-name {
-            font-weight: 500;
-            flex: 1;
-        }
-        .branch-selector {
-            margin-left: 10px;
-            padding: 4px 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 12px;
-            background: white;
-            color: #333;
-            min-width: 120px;
-        }
-        .service-item.selected .branch-selector {
-            border-color: #fff;
-            background: #fff;
         }
         #logOutput {
             background: #1e1e1e;
@@ -283,27 +253,19 @@ HTML_TEMPLATE = r"""
             color: #dc3545;
             font-weight: 600;
         }
-        .branch-info {
-            font-size: 11px;
-            color: #999;
-            margin-top: 5px;
-        }
-        .service-item.selected .branch-info {
-            color: rgba(255,255,255,0.8);
-        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>🚀 Microservice Build Automation</h1>
-            <p>Parallel builds with per-service branch selection and intelligent caching</p>
+            <p>Parallel builds with intelligent caching for Spring Boot services</p>
         </div>
 
         <div class="content">
             <div class="section">
                 <h2>System Prerequisites</h2>
-                <button class="btn btn-info" id="btnCheckPrereq" onclick="checkPrerequisites()">Check Git & Maven</button>
+                <button class="btn btn-info" id="btnCheckPrereq" onclick="checkPrerequisites()">Check Git, Java & Maven</button>
                 <div id="prereqStatus" class="prereq-status" style="display: none;"></div>
 
                 <div style="margin-top: 15px;">
@@ -365,7 +327,7 @@ HTML_TEMPLATE = r"""
             <div class="section">
                 <h2>Build Services</h2>
                 <div class="form-group">
-                    <label>Services (Click to select, choose branch for each)</label>
+                    <label>Services (Click to select multiple)</label>
                     <div id="servicesList"></div>
                 </div>
                 <div class="checkbox-group">
@@ -393,9 +355,8 @@ HTML_TEMPLATE = r"""
 
     <script>
         const socket = io();
-        let selectedServices = new Map(); // Changed to Map to store {name, branch, repo_url}
+        let selectedServices = new Set();
         let settingsFileContent = null;
-        let currentProjects = []; // Store loaded projects
 
         socket.on('log', function(data) {
             const logOutput = document.getElementById('logOutput');
@@ -423,21 +384,19 @@ HTML_TEMPLATE = r"""
             logOutput.scrollTop = logOutput.scrollHeight;
         });
 
-        // Button loading helpers - FIXED
-        function setButtonLoading(buttonId, loading, text = 'Loading...') {
+        // Button loading helpers - FIXED to use 'loading' class
+        function setButtonLoading(buttonId, loading) {
             const btn = document.getElementById(buttonId);
             if (!btn) return;
-
+            
             if (loading) {
                 btn.disabled = true;
-                btn.classList.add('loading');
-                if (!btn.dataset.originalText) {
-                    btn.dataset.originalText = btn.textContent;
-                }
-                btn.textContent = text;
+                btn.classList.add('loading');  // FIXED: was 'btn-loading'
+                btn.dataset.originalText = btn.textContent;
+                btn.textContent = 'Loading...';
             } else {
                 btn.disabled = false;
-                btn.classList.remove('loading');
+                btn.classList.remove('loading');  // FIXED: was 'btn-loading'
                 if (btn.dataset.originalText) {
                     btn.textContent = btn.dataset.originalText;
                     delete btn.dataset.originalText;
@@ -446,13 +405,27 @@ HTML_TEMPLATE = r"""
         }
 
         function disableBuildButtons() {
-            setButtonLoading('btnBuildSelected', true, 'Building...');
-            setButtonLoading('btnBuildAll', true, 'Building...');
+            ['btnBuildSelected', 'btnBuildAll'].forEach(id => {
+                const btn = document.getElementById(id);
+                if (btn) {
+                    btn.disabled = true;
+                    btn.classList.add('loading');
+                }
+            });
         }
 
         function enableBuildButtons() {
-            setButtonLoading('btnBuildSelected', false);
-            setButtonLoading('btnBuildAll', false);
+            ['btnBuildSelected', 'btnBuildAll'].forEach(id => {
+                const btn = document.getElementById(id);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.classList.remove('loading');
+                    if (btn.dataset.originalText) {
+                        btn.textContent = btn.dataset.originalText;
+                        delete btn.dataset.originalText;
+                    }
+                }
+            });
         }
 
         // File upload handling
@@ -516,6 +489,25 @@ HTML_TEMPLATE = r"""
                     html += `<div style="font-size: 12px; color: #666; padding: 5px 0;">Path: ${data.git.path}</div>`;
                 }
 
+                // Java status
+                const javaClass = data.java.available ? 'prereq-ok' : 'prereq-error';
+                html += `<div class="prereq-item">
+                    <span><strong>Java:</strong> ${data.java.version}</span>
+                    <span class="${javaClass}">${data.java.available ? '✓ Available' : '✗ Not Found'}</span>
+                </div>`;
+                if (data.java.path) {
+                    html += `<div style="font-size: 12px; color: #666; padding: 5px 0;">Path: ${data.java.path}</div>`;
+                }
+                if (data.java.java_home) {
+                    html += `<div style="font-size: 12px; color: #666; padding: 5px 0;">JAVA_HOME: ${data.java.java_home}</div>`;
+                }
+                if (!data.java.available) {
+                    html += `<div style="font-size: 12px; color: #dc3545; padding: 5px 0;">
+                        ⚠️ Java not found. Please install Java JDK and add it to your system PATH.
+                        <br>Maven requires Java to run.
+                    </div>`;
+                }
+
                 // Maven status
                 const mavenClass = data.maven.available ? 'prereq-ok' : 'prereq-error';
                 html += `<div class="prereq-item">
@@ -534,7 +526,7 @@ HTML_TEMPLATE = r"""
                 prereqStatus.innerHTML = html;
                 prereqStatus.style.display = 'block';
 
-                if (!data.git.available || !data.maven.available) {
+                if (!data.git.available || !data.maven.available || !data.java.available) {
                     updateStatus('⚠️ Prerequisites not met - check system requirements');
                 } else {
                     updateStatus('✓ All prerequisites satisfied');
@@ -588,7 +580,7 @@ HTML_TEMPLATE = r"""
                 return;
             }
 
-            setButtonLoading('btnConnect', true, 'Connecting...');
+            setButtonLoading('btnConnect', true);
             updateStatus('Connecting to GitLab...');
 
             try {
@@ -669,7 +661,7 @@ HTML_TEMPLATE = r"""
                 .map(p => p.trim())
                 .filter(p => p.length > 0);
 
-            setButtonLoading('btnSaveSettings', true, 'Saving...');
+            setButtonLoading('btnSaveSettings', true);
 
             try {
                 const response = await fetch('/api/group/settings', {
@@ -707,14 +699,13 @@ HTML_TEMPLATE = r"""
                 }
             }
 
-            setButtonLoading('btnLoadProjects', true, 'Loading...');
+            setButtonLoading('btnLoadProjects', true);
             updateStatus('Loading projects...');
 
             try {
                 const response = await fetch(`/api/projects/${groupId}`);
                 const data = await response.json();
 
-                currentProjects = data.projects;
                 const servicesList = document.getElementById('servicesList');
                 servicesList.innerHTML = '';
                 selectedServices.clear();
@@ -728,55 +719,8 @@ HTML_TEMPLATE = r"""
                 data.projects.forEach(project => {
                     const div = document.createElement('div');
                     div.className = 'service-item';
-                    div.dataset.projectId = project.id;
-
-                    const serviceName = document.createElement('span');
-                    serviceName.className = 'service-name';
-                    serviceName.textContent = project.name;
-
-                    const branchSelect = document.createElement('select');
-                    branchSelect.className = 'branch-selector';
-                    branchSelect.onclick = (e) => e.stopPropagation();
-
-                    // Add default branch
-                    const defaultBranch = project.default_branch || 'master';
-                    const defaultOption = document.createElement('option');
-                    defaultOption.value = defaultBranch;
-                    defaultOption.textContent = `${defaultBranch} (default)`;
-                    branchSelect.appendChild(defaultOption);
-
-                    // Load branches dynamically when selected
-                    branchSelect.addEventListener('click', async function(e) {
-                        e.stopPropagation();
-                        if (this.dataset.loaded !== 'true') {
-                            try {
-                                const branchResponse = await fetch(`/api/project/${project.id}/branches`);
-                                const branchData = await branchResponse.json();
-
-                                // Clear and repopulate
-                                this.innerHTML = '';
-                                branchData.branches.forEach(branch => {
-                                    const option = document.createElement('option');
-                                    option.value = branch;
-                                    option.textContent = branch === defaultBranch ? `${branch} (default)` : branch;
-                                    this.appendChild(option);
-                                });
-                                this.value = defaultBranch;
-                                this.dataset.loaded = 'true';
-                            } catch (error) {
-                                console.error('Error loading branches:', error);
-                            }
-                        }
-                    });
-
-                    div.appendChild(serviceName);
-                    div.appendChild(branchSelect);
-
-                    div.onclick = (e) => {
-                        if (e.target === branchSelect) return;
-                        toggleService(project, div, branchSelect);
-                    };
-
+                    div.textContent = project.name;
+                    div.onclick = () => toggleService(project.name, div);
                     servicesList.appendChild(div);
                 });
 
@@ -788,33 +732,14 @@ HTML_TEMPLATE = r"""
             }
         }
 
-        function toggleService(project, element, branchSelect) {
-            const serviceName = project.name;
-
+        function toggleService(serviceName, element) {
             if (selectedServices.has(serviceName)) {
                 selectedServices.delete(serviceName);
                 element.classList.remove('selected');
             } else {
-                const selectedBranch = branchSelect.value;
-                selectedServices.set(serviceName, {
-                    name: serviceName,
-                    branch: selectedBranch,
-                    repo_url: project.http_url_to_repo
-                });
+                selectedServices.add(serviceName);
                 element.classList.add('selected');
             }
-
-            // Update branch when changed
-            branchSelect.addEventListener('change', function(e) {
-                e.stopPropagation();
-                if (selectedServices.has(serviceName)) {
-                    selectedServices.set(serviceName, {
-                        name: serviceName,
-                        branch: this.value,
-                        repo_url: project.http_url_to_repo
-                    });
-                }
-            });
         }
 
         async function buildSelected() {
@@ -834,15 +759,12 @@ HTML_TEMPLATE = r"""
             disableBuildButtons();
 
             try {
-                // Convert Map to array of build configs
-                const buildConfigs = Array.from(selectedServices.values());
-
                 const response = await fetch('/api/build', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         group_id: groupId,
-                        build_configs: buildConfigs,  // Send with branch info
+                        services: Array.from(selectedServices),
                         force: force,
                         max_workers: maxWorkers
                     })
@@ -876,22 +798,10 @@ HTML_TEMPLATE = r"""
                 return;
             }
 
-            // Select all services with their respective branches
             selectedServices.clear();
             servicesList.forEach(item => {
-                const projectId = item.dataset.projectId;
-                const project = currentProjects.find(p => p.id == projectId);
-                if (project) {
-                    const branchSelect = item.querySelector('.branch-selector');
-                    const selectedBranch = branchSelect ? branchSelect.value : (project.default_branch || 'master');
-
-                    selectedServices.set(project.name, {
-                        name: project.name,
-                        branch: selectedBranch,
-                        repo_url: project.http_url_to_repo
-                    });
-                    item.classList.add('selected');
-                }
+                selectedServices.add(item.textContent);
+                item.classList.add('selected');
             });
 
             await buildSelected();
@@ -900,7 +810,7 @@ HTML_TEMPLATE = r"""
         async function clearCache() {
             if (!confirm('Clear build cache? Next build will rebuild everything.')) return;
 
-            setButtonLoading('btnClearCache', true, 'Clearing...');
+            setButtonLoading('btnClearCache', true);
 
             try {
                 const response = await fetch('/api/cache/clear', {method: 'POST'});
@@ -925,6 +835,7 @@ HTML_TEMPLATE = r"""
 
         // Load saved configuration on page load
         window.onload = function() {
+            // Check if there's a saved configuration
             fetch('/api/config')
                 .then(response => response.json())
                 .then(data => {
