@@ -1,6 +1,9 @@
 """
-UI templates with working button loaders
-KEY FIX: Changed CSS from .btn-loading to .btn.loading
+UI templates with branch selection and working button loaders
+KEY FEATURES:
+1. Per-service branch selection
+2. Branch fetching from GitLab API
+3. Fixed button loading states
 """
 
 HTML_TEMPLATE = r"""
@@ -20,7 +23,7 @@ HTML_TEMPLATE = r"""
             padding: 20px;
         }
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             background: white;
             border-radius: 12px;
@@ -110,7 +113,6 @@ HTML_TEMPLATE = r"""
         }
         .btn-info:hover:not(:disabled) { background: #138496; }
         
-        /* CRITICAL FIX: Changed from .btn-loading to .btn.loading */
         .btn.loading {
             pointer-events: none;
             padding-right: 40px;
@@ -134,26 +136,83 @@ HTML_TEMPLATE = r"""
             to { transform: rotate(360deg); }
         }
         
-        #servicesList {
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            padding: 10px;
-            max-height: 300px;
-            overflow-y: auto;
+        /* Service table with branch selection */
+        #servicesTable {
+            width: 100%;
+            border-collapse: collapse;
             background: white;
+            border-radius: 6px;
+            overflow: hidden;
         }
-        .service-item {
-            padding: 8px;
-            margin-bottom: 5px;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        .service-item:hover { background: #e9ecef; }
-        .service-item.selected {
+        
+        #servicesTable thead {
             background: #667eea;
             color: white;
         }
+        
+        #servicesTable th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        #servicesTable td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        #servicesTable tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .service-checkbox {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+        
+        .branch-select {
+            width: 100%;
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        
+        .branch-select:disabled {
+            background: #f0f0f0;
+            cursor: not-allowed;
+        }
+        
+        .service-name {
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .default-branch-badge {
+            display: inline-block;
+            background: #28a745;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            margin-left: 8px;
+        }
+        
+        .select-all-container {
+            background: #e7f3ff;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .select-all-container label {
+            margin: 0 0 0 8px;
+            font-weight: 500;
+        }
+        
         #logOutput {
             background: #1e1e1e;
             color: #d4d4d4;
@@ -253,13 +312,18 @@ HTML_TEMPLATE = r"""
             color: #dc3545;
             font-weight: 600;
         }
+        .loading-spinner {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>🚀 Microservice Build Automation</h1>
-            <p>Parallel builds with intelligent caching for Spring Boot services</p>
+            <p>Parallel builds with intelligent caching and per-service branch selection</p>
         </div>
 
         <div class="content">
@@ -326,22 +390,45 @@ HTML_TEMPLATE = r"""
 
             <div class="section">
                 <h2>Build Services</h2>
-                <div class="form-group">
-                    <label>Services (Click to select multiple)</label>
-                    <div id="servicesList"></div>
+                
+                <div class="select-all-container">
+                    <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()">
+                    <label for="selectAllCheckbox">Select All Services</label>
                 </div>
-                <div class="checkbox-group">
-                    <input type="checkbox" id="forceRebuild">
-                    <label for="forceRebuild" style="margin-bottom: 0;">Force rebuild (ignore cache)</label>
+                
+                <div style="overflow-x: auto;">
+                    <table id="servicesTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;">Select</th>
+                                <th>Service Name</th>
+                                <th style="width: 250px;">Branch</th>
+                            </tr>
+                        </thead>
+                        <tbody id="servicesTableBody">
+                            <tr>
+                                <td colspan="3" style="text-align: center; padding: 40px; color: #999;">
+                                    No projects loaded. Please select a group and click "Load Projects".
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
-                <div class="form-group">
-                    <label>Parallel Builds</label>
-                    <input type="number" id="maxWorkers" value="4" min="1" max="16">
+                
+                <div style="margin-top: 20px;">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="forceRebuild">
+                        <label for="forceRebuild" style="margin-bottom: 0;">Force rebuild (ignore cache)</label>
+                    </div>
+                    <div class="form-group">
+                        <label>Parallel Builds</label>
+                        <input type="number" id="maxWorkers" value="4" min="1" max="16">
+                    </div>
+                    <button class="btn btn-primary" id="btnBuildSelected" onclick="buildSelected()">Build Selected</button>
+                    <button class="btn btn-secondary" id="btnBuildAll" onclick="buildAll()">Build All</button>
+                    <button class="btn btn-danger" id="btnClearCache" onclick="clearCache()">Clear Cache</button>
+                    <button class="btn btn-info" id="btnClearLogs" onclick="clearLogs()">Clear Logs</button>
                 </div>
-                <button class="btn btn-primary" id="btnBuildSelected" onclick="buildSelected()">Build Selected</button>
-                <button class="btn btn-secondary" id="btnBuildAll" onclick="buildAll()">Build All</button>
-                <button class="btn btn-danger" id="btnClearCache" onclick="clearCache()">Clear Cache</button>
-                <button class="btn btn-info" id="btnClearLogs" onclick="clearLogs()">Clear Logs</button>
             </div>
 
             <div class="section">
@@ -355,8 +442,8 @@ HTML_TEMPLATE = r"""
 
     <script>
         const socket = io();
-        let selectedServices = new Set();
         let settingsFileContent = null;
+        let projectsData = [];
 
         socket.on('log', function(data) {
             const logOutput = document.getElementById('logOutput');
@@ -368,11 +455,8 @@ HTML_TEMPLATE = r"""
         socket.on('build_complete', function(data) {
             const status = `Build Complete - Success: ${data.success}, Failed: ${data.failed}, Skipped: ${data.skipped}`;
             updateStatus(status);
-
-            // Re-enable build buttons - FIXED
             enableBuildButtons();
 
-            // Show summary in logs
             const logOutput = document.getElementById('logOutput');
             logOutput.innerHTML += '<br><span style="color: #4CAF50; font-weight: bold;">========================================</span><br>';
             logOutput.innerHTML += '<span style="color: #4CAF50; font-weight: bold;">BUILD SUMMARY</span><br>';
@@ -384,19 +468,18 @@ HTML_TEMPLATE = r"""
             logOutput.scrollTop = logOutput.scrollHeight;
         });
 
-        // Button loading helpers - FIXED to use 'loading' class
         function setButtonLoading(buttonId, loading) {
             const btn = document.getElementById(buttonId);
             if (!btn) return;
             
             if (loading) {
                 btn.disabled = true;
-                btn.classList.add('loading');  // FIXED: was 'btn-loading'
+                btn.classList.add('loading');
                 btn.dataset.originalText = btn.textContent;
                 btn.textContent = 'Loading...';
             } else {
                 btn.disabled = false;
-                btn.classList.remove('loading');  // FIXED: was 'btn-loading'
+                btn.classList.remove('loading');
                 if (btn.dataset.originalText) {
                     btn.textContent = btn.dataset.originalText;
                     delete btn.dataset.originalText;
@@ -430,16 +513,13 @@ HTML_TEMPLATE = r"""
 
         // File upload handling
         const fileUploadArea = document.getElementById('fileUploadArea');
-
         fileUploadArea.addEventListener('dragover', (e) => {
             e.preventDefault();
             fileUploadArea.classList.add('dragover');
         });
-
         fileUploadArea.addEventListener('dragleave', () => {
             fileUploadArea.classList.remove('dragover');
         });
-
         fileUploadArea.addEventListener('drop', (e) => {
             e.preventDefault();
             fileUploadArea.classList.remove('dragover');
@@ -479,7 +559,6 @@ HTML_TEMPLATE = r"""
 
                 let html = '<h3 style="margin-bottom: 10px;">System Check Results:</h3>';
 
-                // Git status
                 const gitClass = data.git.available ? 'prereq-ok' : 'prereq-error';
                 html += `<div class="prereq-item">
                     <span><strong>Git:</strong> ${data.git.version}</span>
@@ -489,26 +568,6 @@ HTML_TEMPLATE = r"""
                     html += `<div style="font-size: 12px; color: #666; padding: 5px 0;">Path: ${data.git.path}</div>`;
                 }
 
-                // Java status
-                const javaClass = data.java.available ? 'prereq-ok' : 'prereq-error';
-                html += `<div class="prereq-item">
-                    <span><strong>Java:</strong> ${data.java.version}</span>
-                    <span class="${javaClass}">${data.java.available ? '✓ Available' : '✗ Not Found'}</span>
-                </div>`;
-                if (data.java.path) {
-                    html += `<div style="font-size: 12px; color: #666; padding: 5px 0;">Path: ${data.java.path}</div>`;
-                }
-                if (data.java.java_home) {
-                    html += `<div style="font-size: 12px; color: #666; padding: 5px 0;">JAVA_HOME: ${data.java.java_home}</div>`;
-                }
-                if (!data.java.available) {
-                    html += `<div style="font-size: 12px; color: #dc3545; padding: 5px 0;">
-                        ⚠️ Java not found. Please install Java JDK and add it to your system PATH.
-                        <br>Maven requires Java to run.
-                    </div>`;
-                }
-
-                // Maven status
                 const mavenClass = data.maven.available ? 'prereq-ok' : 'prereq-error';
                 html += `<div class="prereq-item">
                     <span><strong>Maven:</strong> ${data.maven.version}</span>
@@ -518,22 +577,20 @@ HTML_TEMPLATE = r"""
                     html += `<div style="font-size: 12px; color: #666; padding: 5px 0;">Path: ${data.maven.path}</div>`;
                 } else {
                     html += `<div style="font-size: 12px; color: #dc3545; padding: 5px 0;">
-                        ⚠️ Maven not found. Please set the path manually below or add Maven to your system PATH.
-                        <br>Example: C:\\\\Users\\\\YourName\\\\Documents\\\\software\\\\apache-maven-3.9.9\\\\bin\\\\mvn.cmd
+                        ⚠️ Maven not found. Please set the path manually below.
                     </div>`;
                 }
 
                 prereqStatus.innerHTML = html;
                 prereqStatus.style.display = 'block';
 
-                if (!data.git.available || !data.maven.available || !data.java.available) {
-                    updateStatus('⚠️ Prerequisites not met - check system requirements');
+                if (!data.git.available || !data.maven.available) {
+                    updateStatus('⚠️ Prerequisites not met');
                 } else {
                     updateStatus('✓ All prerequisites satisfied');
                 }
             } catch (error) {
                 alert('Error checking prerequisites: ' + error);
-                updateStatus('Error checking prerequisites');
             } finally {
                 setButtonLoading('btnCheckPrereq', false);
             }
@@ -541,25 +598,21 @@ HTML_TEMPLATE = r"""
 
         async function setMavenPath() {
             const mavenPath = document.getElementById('mavenPath').value.trim();
-
             if (!mavenPath) {
                 alert('Please enter a Maven path');
                 return;
             }
 
             setButtonLoading('btnSetMaven', true);
-
             try {
                 const response = await fetch('/api/set-maven-path', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({maven_path: mavenPath})
                 });
-
                 const data = await response.json();
-
                 if (data.success) {
-                    alert('Maven path set successfully! Click "Check Git & Maven" to verify.');
+                    alert('Maven path set successfully!');
                     await checkPrerequisites();
                 } else {
                     alert('Failed to set Maven path: ' + data.error);
@@ -636,7 +689,7 @@ HTML_TEMPLATE = r"""
                 } else {
                     document.getElementById('settingsStatus').className = 'settings-status not-configured';
                     document.getElementById('settingsStatus').textContent = 'Not Configured';
-                    document.getElementById('groupInfo').textContent = 'Please upload settings.xml and configure options';
+                    document.getElementById('groupInfo').textContent = 'Please upload settings.xml';
                 }
             } catch (error) {
                 console.error('Error checking group settings:', error);
@@ -692,58 +745,117 @@ HTML_TEMPLATE = r"""
                 return;
             }
 
-            const statusElement = document.getElementById('settingsStatus');
-            if (statusElement.classList.contains('not-configured')) {
-                if (!confirm('Group settings are not configured. Do you want to continue loading projects?')) {
-                    return;
-                }
-            }
-
             setButtonLoading('btnLoadProjects', true);
             updateStatus('Loading projects...');
+
+            const tbody = document.getElementById('servicesTableBody');
+            tbody.innerHTML = '<tr><td colspan="3" class="loading-spinner">Loading projects and branches...</td></tr>';
 
             try {
                 const response = await fetch(`/api/projects/${groupId}`);
                 const data = await response.json();
+                projectsData = data.projects;
 
-                const servicesList = document.getElementById('servicesList');
-                servicesList.innerHTML = '';
-                selectedServices.clear();
-
-                if (data.projects.length === 0) {
-                    servicesList.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">No projects found in this group</div>';
+                if (projectsData.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 40px; color: #999;">No projects found in this group</td></tr>';
                     updateStatus('No projects found');
                     return;
                 }
 
-                data.projects.forEach(project => {
-                    const div = document.createElement('div');
-                    div.className = 'service-item';
-                    div.textContent = project.name;
-                    div.onclick = () => toggleService(project.name, div);
-                    servicesList.appendChild(div);
-                });
+                // Load branches for each project
+                updateStatus(`Loading branches for ${projectsData.length} projects...`);
+                
+                for (let project of projectsData) {
+                    try {
+                        const branchResponse = await fetch(`/api/project/${project.id}/branches`);
+                        const branchData = await branchResponse.json();
+                        project.branches = branchData.branches || [];
+                        project.selectedBranch = project.default_branch || 'master';
+                    } catch (error) {
+                        console.error(`Error loading branches for ${project.name}:`, error);
+                        project.branches = [project.default_branch || 'master'];
+                        project.selectedBranch = project.default_branch || 'master';
+                    }
+                }
 
-                updateStatus(`Loaded ${data.projects.length} projects`);
+                renderProjectsTable();
+                updateStatus(`Loaded ${projectsData.length} projects`);
             } catch (error) {
                 alert('Error loading projects: ' + error);
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 40px; color: #dc3545;">Error loading projects</td></tr>';
             } finally {
                 setButtonLoading('btnLoadProjects', false);
             }
         }
 
-        function toggleService(serviceName, element) {
-            if (selectedServices.has(serviceName)) {
-                selectedServices.delete(serviceName);
-                element.classList.remove('selected');
-            } else {
-                selectedServices.add(serviceName);
-                element.classList.add('selected');
-            }
+        function renderProjectsTable() {
+            const tbody = document.getElementById('servicesTableBody');
+            tbody.innerHTML = '';
+
+            projectsData.forEach((project, index) => {
+                const row = document.createElement('tr');
+                
+                // Checkbox cell
+                const checkboxCell = document.createElement('td');
+                checkboxCell.innerHTML = `<input type="checkbox" class="service-checkbox" data-index="${index}">`;
+                row.appendChild(checkboxCell);
+
+                // Service name cell
+                const nameCell = document.createElement('td');
+                nameCell.innerHTML = `<span class="service-name">${project.name}</span>`;
+                row.appendChild(nameCell);
+
+                // Branch selection cell
+                const branchCell = document.createElement('td');
+                let branchOptions = '';
+                project.branches.forEach(branch => {
+                    const isDefault = branch === project.default_branch;
+                    const selected = branch === project.selectedBranch ? 'selected' : '';
+                    branchOptions += `<option value="${branch}" ${selected}>${branch}${isDefault ? ' (default)' : ''}</option>`;
+                });
+                
+                branchCell.innerHTML = `
+                    <select class="branch-select" data-index="${index}" onchange="updateBranchSelection(${index}, this.value)">
+                        ${branchOptions}
+                    </select>
+                `;
+                row.appendChild(branchCell);
+
+                tbody.appendChild(row);
+            });
+        }
+
+        function updateBranchSelection(index, branch) {
+            projectsData[index].selectedBranch = branch;
+        }
+
+        function toggleSelectAll() {
+            const selectAll = document.getElementById('selectAllCheckbox').checked;
+            const checkboxes = document.querySelectorAll('.service-checkbox');
+            checkboxes.forEach(cb => cb.checked = selectAll);
+        }
+
+        function getSelectedServices() {
+            const selected = [];
+            const checkboxes = document.querySelectorAll('.service-checkbox:checked');
+            
+            checkboxes.forEach(checkbox => {
+                const index = parseInt(checkbox.dataset.index);
+                const project = projectsData[index];
+                selected.push({
+                    name: project.name,
+                    repo_url: project.http_url_to_repo,
+                    branch: project.selectedBranch
+                });
+            });
+
+            return selected;
         }
 
         async function buildSelected() {
-            if (selectedServices.size === 0) {
+            const selectedServices = getSelectedServices();
+            
+            if (selectedServices.length === 0) {
                 alert('Please select at least one service');
                 return;
             }
@@ -753,9 +865,8 @@ HTML_TEMPLATE = r"""
             const maxWorkers = parseInt(document.getElementById('maxWorkers').value);
 
             document.getElementById('logOutput').innerHTML = '';
-            updateStatus(`Building ${selectedServices.size} services...`);
+            updateStatus(`Building ${selectedServices.length} services...`);
 
-            // Disable build buttons and show loading - FIXED
             disableBuildButtons();
 
             try {
@@ -764,7 +875,7 @@ HTML_TEMPLATE = r"""
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         group_id: groupId,
-                        services: Array.from(selectedServices),
+                        build_configs: selectedServices,
                         force: force,
                         max_workers: maxWorkers
                     })
@@ -792,17 +903,14 @@ HTML_TEMPLATE = r"""
                 return;
             }
 
-            const servicesList = document.querySelectorAll('.service-item');
-            if (servicesList.length === 0) {
+            if (projectsData.length === 0) {
                 alert('No services loaded. Please load projects first.');
                 return;
             }
 
-            selectedServices.clear();
-            servicesList.forEach(item => {
-                selectedServices.add(item.textContent);
-                item.classList.add('selected');
-            });
+            // Select all checkboxes
+            document.getElementById('selectAllCheckbox').checked = true;
+            toggleSelectAll();
 
             await buildSelected();
         }
@@ -833,9 +941,7 @@ HTML_TEMPLATE = r"""
             document.getElementById('statusBar').textContent = message;
         }
 
-        // Load saved configuration on page load
         window.onload = function() {
-            // Check if there's a saved configuration
             fetch('/api/config')
                 .then(response => response.json())
                 .then(data => {
