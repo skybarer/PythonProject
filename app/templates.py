@@ -1439,17 +1439,17 @@ HTML_TEMPLATE = r"""
             if (project.branchesLoaded || project.branchesLoading) {
                 return;
             }
-        
+
             if (branchCache[project.id]) {
                 project.branches = branchCache[project.id];
                 project.branchesLoaded = true;
                 renderBranchSelection(index);
                 return;
             }
-        
+
             project.branchesLoading = true;
             updateBranchCell(index, '⏳ Loading branches...');
-        
+
             try {
                 const response = await fetch(`/api/project/${project.id}/branches`);
                 const data = await response.json();
@@ -1460,10 +1460,18 @@ HTML_TEMPLATE = r"""
                     // API returns branches as objects with { name, is_default, display }
                     project.branches = data.branches;
                     project.default_branch = data.default_branch || project.default_branch;
+                    
+                    // 🔴 ADD THESE LINES:
+                    // Set the default branch as selected if not already set
+                    if (!project.selectedBranch || project.selectedBranch === project.default_branch) {
+                        project.selectedBranch = project.default_branch;
+                    }
+                    
                     project.branchesLoaded = true;
                     branchCache[project.id] = project.branches;
                     
                     console.log(`Loaded ${project.branches.length} branches for ${project.name}`);
+                    console.log(`Default branch: ${project.default_branch}, Selected: ${project.selectedBranch}`); // 🔴 ADD THIS
                     
                     renderBranchSelection(index);
                 } else {
@@ -1494,6 +1502,14 @@ HTML_TEMPLATE = r"""
                 cell.innerHTML = `<div class="no-branches">No branches available</div>`;
                 return;
             }
+            
+             if (!project.selectedBranch) {
+                project.selectedBranch = project.default_branch;
+             }
+            
+            console.log(`Rendering branches for ${project.name}:`);
+            console.log(`  Default: ${project.default_branch}`);
+            console.log(`  Selected: ${project.selectedBranch}`);
         
             const searchId = `branch-search-${index}`;
             const selectId = `branch-select-${index}`;
