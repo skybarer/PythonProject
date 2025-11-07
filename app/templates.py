@@ -18,9 +18,36 @@ HTML_TEMPLATE = r"""
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Microservice Build Automation</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+   <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        corePlugins: {
+          preflight: false,  // This disables Tailwind's reset
+        },
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'ui-sans-serif', 'system-ui'],
+            },
+          },
+        },
+      }
+    </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        *, *::before, *::after {
+            box-sizing: border-box !important;
+        }
+        
+        input[type="text"],
+        input[type="password"],
+        input[type="number"],
+        select,
+        textarea {
+            padding: 11px 14px !important;
+            line-height: 1.5 !important;
+            box-sizing: border-box !important;
+        }
         
         * { 
             margin: 0; 
@@ -105,13 +132,26 @@ HTML_TEMPLATE = r"""
         }
         
         input, select, textarea {
-            width: 100%;
-            padding: 10px 12px;
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-            font-size: 14px;
-            transition: all 0.2s;
-            font-family: inherit;
+            width: 100% !important;
+            padding: 11px 14px !important;
+            border: 2px solid #e9ecef !important;
+            border-radius: 8px !important;
+            font-size: 14px !important;
+            transition: all 0.2s !important;
+            font-family: inherit !important;
+            line-height: 1.5 !important;
+        }
+        
+        input[type="number"],
+        input[type="text"],
+        input[type="password"] {
+            height: 42px !important;
+            padding: 11px 14px !important;
+        }
+        
+        .search-input input {
+            padding-left: 40px !important;
+            padding-right: 14px !important;
         }
         
         input:focus, select:focus, textarea:focus {
@@ -126,6 +166,7 @@ HTML_TEMPLATE = r"""
         
         .search-input input {
             padding-left: 40px;
+            padding-right: 14px;
         }
         
         .search-icon {
