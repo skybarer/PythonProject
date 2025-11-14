@@ -1,13 +1,14 @@
 """
 builder.py - ULTRA-OPTIMIZED FOR MAXIMUM SPEED
 Aggressive multi-threading, parallel builds, and resource maximization
-Can reduce build times from 1 hour to 10-15 minutes!
+FIXED: Windows Maven execution (WinError 2)
 """
 
 import os
 import subprocess
 import time
 import threading
+import sys
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict
@@ -30,13 +31,13 @@ class BuildConfig:
     settings_file: str
     maven_profiles: List[str]
     jvm_options: str
-    maven_threads: int = 8  # Increased default
+    maven_threads: int = 8
     force_full_fetch: bool = False
-    # NEW: Aggressive optimization flags
+    # Aggressive optimization flags
     skip_tests: bool = True
     skip_javadoc: bool = True
     skip_source: bool = True
-    offline_mode: bool = False  # Use after first build
+    offline_mode: bool = False
     aggressive_parallel: bool = True
 
 
@@ -46,9 +47,8 @@ class MicroserviceBuilder:
         self.workspace_dir.mkdir(exist_ok=True)
 
         self.sys_info = SystemInfo()
-
-        # AGGRESSIVE: Use ALL available CPU cores for parallel builds
         self.max_workers = max(4, self.sys_info.cpu_logical_count)
+        self.is_windows = sys.platform.startswith('win')
 
         self.build_cache = BuildCache()
         self.command_finder = CommandFinder()
@@ -60,8 +60,6 @@ class MicroserviceBuilder:
 
         self.log_callbacks = []
         self.log_lock = threading.Lock()
-
-        # Performance tracking
         self.build_start_time = None
 
     def _find_commands(self):
@@ -102,51 +100,74 @@ class MicroserviceBuilder:
         return results
 
     def get_ultra_optimized_maven_opts(self, config: BuildConfig) -> str:
-        """
-        ULTRA-AGGRESSIVE JVM settings for maximum build speed
-        Uses all available memory and CPU resources
-        """
+        """ULTRA-AGGRESSIVE JVM settings for maximum build speed"""
         if config.jvm_options and config.jvm_options.strip():
             return config.jvm_options
 
-        # Calculate aggressive memory allocation
         available_gb = self.sys_info.available_memory_gb
-        total_gb = self.sys_info.total_memory_gb
-
-        # Use 70% of available memory (very aggressive)
         heap_size = max(4, min(16, int(available_gb * 0.7)))
-
-        # Use all CPU cores
         gc_threads = self.sys_info.cpu_logical_count
 
-        # ULTRA-AGGRESSIVE JVM OPTIONS
         opts = [
-            f'-Xmx{heap_size}G',  # Maximum heap
-            f'-Xms{heap_size}G',  # Initial heap = max (avoid resizing)
-            '-XX:+UseParallelGC',  # Parallel garbage collector
-            f'-XX:ParallelGCThreads={gc_threads}',  # Use all cores for GC
-            '-XX:+AggressiveOpts',  # Enable aggressive optimizations
-            '-XX:+UseFastAccessorMethods',  # Faster field access
-            '-XX:+OptimizeStringConcat',  # Optimize string operations
-            '-XX:+UseCompressedOops',  # Reduce memory usage
-            '-XX:ReservedCodeCacheSize=512M',  # Large code cache
-            '-XX:+TieredCompilation',  # Tiered compilation
-            '-XX:TieredStopAtLevel=1',  # Quick compilation (skip heavy optimization)
-            '-XX:CICompilerCount=4',  # More compiler threads
-            '-XX:+CMSClassUnloadingEnabled',  # Unload unused classes
-            '-XX:+UseConcMarkSweepGC',  # Alternative: Concurrent GC
-            '-XX:CMSInitiatingOccupancyFraction=70',  # Start GC earlier
-            '-Djava.awt.headless=true',  # No GUI overhead
-            f'-Dmaven.artifact.threads={gc_threads}',  # Parallel artifact resolution
-            '-Dmaven.compiler.fork=true',  # Fork compiler (parallel)
-            f'-Dmaven.compiler.maxmem={heap_size}g',  # Compiler memory
-            '-Daether.connector.http.connectionMaxTtl=30',  # Faster HTTP
-            '-Daether.connector.requestTimeout=30000',  # Faster timeouts
-            '-Dorg.slf4j.simpleLogger.showDateTime=false',  # Less logging overhead
-            '-Dorg.slf4j.simpleLogger.showThreadName=false',
+            f'-Xmx{heap_size}G',
+            f'-Xms{heap_size}G',
+            '-XX:+UseParallelGC',
+            f'-XX:ParallelGCThreads={gc_threads}',
+            '-XX:+AggressiveOpts',
+            '-XX:+UseFastAccessorMethods',
+            '-XX:+OptimizeStringConcat',
+            '-XX:+UseCompressedOops',
+            '-XX:ReservedCodeCacheSize=512M',
+            '-XX:+TieredCompilation',
+            '-XX:TieredStopAtLevel=1',
+            '-XX:CICompilerCount=4',
+            '-Djava.awt.headless=true',
+            f'-Dmaven.artifact.threads={gc_threads}',
+            '-Dmaven.compiler.fork=true',
+            f'-Dmaven.compiler.maxmem={heap_size}g',
+            '-Daether.connector.http.connectionMaxTtl=30',
+            '-Daether.connector.requestTimeout=30000',
         ]
 
         return ' '.join(opts)
+
+    def _run_maven_command(self, cmd: List[str], cwd: str, env: dict, timeout: int = 1800) -> subprocess.CompletedProcess:
+        """
+        Run Maven command with proper Windows handling
+        FIXES: WinError 2 on Windows
+        """
+        self.log(f"Executing Maven in: {cwd}")
+
+        if self.is_windows:
+            # On Windows: Use shell=True with string command
+            cmd_str = ' '.join(f'"{arg}"' if ' ' in str(arg) and '"' not in str(arg) else str(arg) for arg in cmd)
+            self.log(f"Command (Windows shell): {cmd_str[:200]}...")
+
+            result = subprocess.run(
+                cmd_str,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=timeout,
+                shell=True,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+        else:
+            # On Linux/Mac: Use list command without shell
+            self.log(f"Command (Unix): {' '.join(cmd)[:200]}...")
+
+            result = subprocess.run(
+                cmd,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=timeout,
+                shell=False
+            )
+
+        return result
 
     def build_service(self, config: BuildConfig, force: bool = False) -> Dict:
         start_time = time.time()
@@ -169,7 +190,7 @@ class MicroserviceBuilder:
             if not self.git_service:
                 raise Exception("Git not available")
 
-            # 1. Clone or update (FAST mode)
+            # 1. Clone or update
             clone_start = time.time()
             success = self.git_service.clone_or_update_repo(
                 config.repo_url,
@@ -225,13 +246,13 @@ class MicroserviceBuilder:
             # 6. BUILD COMMAND - ULTRA OPTIMIZED
             self.log(f"🚀 Starting ULTRA-FAST Maven build...")
 
-            # Calculate optimal thread count (use ALL cores)
             maven_threads = max(config.maven_threads, self.sys_info.cpu_logical_count)
 
             cmd = [
                 self.maven_cmd,
                 "clean", "install",
-                f"-T {maven_threads}C",  # CRITICAL: Threads = Cores (e.g., "8C" = 8 cores)
+                f"-T",
+                f"{maven_threads}C",  # Separate argument for better parsing
             ]
 
             # AGGRESSIVE SKIP FLAGS
@@ -257,12 +278,12 @@ class MicroserviceBuilder:
             if config.skip_source:
                 cmd.append("-Dmaven.source.skip=true")
 
-            # Custom local repository (faster access)
+            # Custom local repository
             cmd.append(f"-Dmaven.repo.local={self.workspace_dir}/.m2/repository")
 
-            # Offline mode (after first build)
+            # Offline mode
             if config.offline_mode:
-                cmd.append("-o")  # Offline mode - no network calls!
+                cmd.append("-o")
                 self.log("📴 OFFLINE MODE - Using local cache only")
 
             # Settings file
@@ -275,37 +296,25 @@ class MicroserviceBuilder:
 
             # PERFORMANCE FLAGS
             cmd.extend([
-                "-B",  # Batch mode (no interactive prompts)
-                "-q",  # Quiet mode (less logging = faster)
-                "-Dstyle.color=never",  # No color output overhead
-                "-Dmaven.artifact.threads=16",  # Parallel artifact downloads
-                "-Daether.connector.basic.threads=16",  # More HTTP threads
+                "-B",  # Batch mode
+                "-q",  # Quiet mode
+                "-Dstyle.color=never",
+                "-Dmaven.artifact.threads=16",
+                "-Daether.connector.basic.threads=16",
             ])
 
             # Environment with ULTRA-OPTIMIZED JVM options
             env = os.environ.copy()
             env["MAVEN_OPTS"] = self.get_ultra_optimized_maven_opts(config)
-
-            # Add Maven performance env vars
             env["MAVEN_OPTS"] += " -Dmaven.wagon.http.pool=true"
             env["MAVEN_OPTS"] += " -Dmaven.wagon.http.retryHandler.count=2"
-            env["MAVEN_OPTS"] += " -Dmaven.wagon.httpconnectionManager.ttlSeconds=120"
 
-            self.log(f"Maven Command: {' '.join(cmd)}")
-            self.log(f"JVM Options: {env['MAVEN_OPTS'][:150]}...")
+            self.log(f"JVM Heap: {env['MAVEN_OPTS'][:80]}...")
             self.log(f"Using {maven_threads} CPU cores for parallel build")
 
-            # RUN MAVEN
+            # RUN MAVEN with proper Windows handling
             build_start = time.time()
-            proc = subprocess.run(
-                cmd,
-                cwd=str(repo_dir),
-                capture_output=True,
-                text=True,
-                env=env,
-                timeout=1800,  # 30 min timeout
-                shell=False
-            )
+            proc = self._run_maven_command(cmd, str(repo_dir), env, timeout=1800)
             build_time = time.time() - build_start
 
             if proc.returncode == 0:
@@ -319,7 +328,6 @@ class MicroserviceBuilder:
                 result["error"] = proc.stderr[-1000:] if proc.stderr else "Build failed"
                 self.log(f"❌ FAILED - {time.time()-start_time:.1f}s")
 
-                # Show last 15 lines of error
                 if proc.stderr:
                     error_lines = proc.stderr.strip().split('\n')
                     self.log("Last 15 error lines:")
@@ -334,14 +342,14 @@ class MicroserviceBuilder:
             result["status"] = "error"
             result["error"] = str(e)
             self.log(f"❌ ERROR: {e}")
+            import traceback
+            self.log(traceback.format_exc())
 
         result["duration"] = time.time() - start_time
         return result
 
     def build_services(self, configs: List[BuildConfig], force: bool = False) -> List[Dict]:
-        """
-        Build multiple services in parallel with MAXIMUM resource utilization
-        """
+        """Build multiple services in parallel with MAXIMUM resource utilization"""
         self.build_start_time = time.time()
 
         self.log(f"\n{'='*70}")
@@ -351,7 +359,8 @@ class MicroserviceBuilder:
         self.log(f"Parallel Workers: {self.max_workers}")
         self.log(f"CPU Cores: {self.sys_info.cpu_logical_count} (using ALL)")
         self.log(f"Available RAM: {self.sys_info.available_memory_gb:.1f} GB")
-        self.log(f"Strategy: AGGRESSIVE - Maximum resource utilization")
+        self.log(f"Platform: {'Windows' if self.is_windows else 'Unix'}")
+        self.log(f"Maven: {self.maven_cmd}")
         self.log(f"{'='*70}\n")
 
         prereqs = self.check_prerequisites()
@@ -360,7 +369,6 @@ class MicroserviceBuilder:
 
         results = []
 
-        # Build in parallel with ALL available workers
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
             futures = {pool.submit(self.build_service, c, force): c for c in configs}
 
@@ -372,7 +380,6 @@ class MicroserviceBuilder:
                 results.append(result)
                 completed += 1
 
-                # Progress update
                 elapsed = time.time() - self.build_start_time
                 avg_time = elapsed / completed
                 eta = avg_time * (total - completed)
@@ -382,7 +389,6 @@ class MicroserviceBuilder:
                 self.log(f"Elapsed: {elapsed/60:.1f} min | ETA: {eta/60:.1f} min")
                 self.log(f"{'='*70}\n")
 
-        # Summary
         total_time = time.time() - self.build_start_time
         success = sum(1 for r in results if r['status'] == 'success')
         failed = sum(1 for r in results if r['status'] == 'failed')
