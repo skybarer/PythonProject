@@ -55,39 +55,32 @@ class GitService:
 
     def _run_git_command(self, args: List[str], cwd: str = None, timeout: int = None, use_shell: bool = None) -> subprocess.CompletedProcess:
         """
-        Run git with proper Windows long path handling
-
-        CRITICAL FIXES:
-        1. Don't use shell=True for Git commands on Windows (causes path issues)
-        2. Use absolute paths
-        3. Ensure Git is configured for long paths
+        Run git with reliable Windows handling
+        USES: Method 3 (shell=False with list) - confirmed working!
         """
         if timeout is None:
             timeout = self.timeout
 
         if cwd and isinstance(cwd, Path):
-            cwd = str(cwd.resolve())  # Convert to absolute path
+            cwd = str(cwd.resolve())
         elif cwd:
             cwd = str(Path(cwd).resolve())
 
-        # For Windows: Don't use shell unless explicitly requested
-        # Shell mode on Windows causes issues with long paths
-        if use_shell is None:
-            use_shell = False  # Default to False for better path handling
-
-        self.log(f"Running: {' '.join(args)}")
+        self.log(f"Running: {' '.join(str(x) for x in args)}")
         if cwd:
             self.log(f"   CWD: {cwd}")
 
         try:
+            # Use shell=False with list args on ALL platforms
+            # This is Method 3 from the test - it works!
             result = subprocess.run(
                 args,
                 cwd=cwd,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                shell=use_shell,
-                creationflags=subprocess.CREATE_NO_WINDOW if self.is_windows else 0  # Hide console window on Windows
+                shell=False,  # Works for both Git and Maven!
+                creationflags=subprocess.CREATE_NO_WINDOW if self.is_windows else 0
             )
 
             if result.stdout.strip():

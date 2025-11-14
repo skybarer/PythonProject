@@ -134,27 +134,28 @@ class MicroserviceBuilder:
     def _run_maven_command(self, cmd: List[str], cwd: str, env: dict, timeout: int = 1800) -> subprocess.CompletedProcess:
         """
         Run Maven command with proper Windows handling
-        FIXES: WinError 2 on Windows
+        CRITICAL FIX: Use shell=False with list args (Method 3) - this works!
         """
         self.log(f"Executing Maven in: {cwd}")
 
         if self.is_windows:
-            # On Windows: Use shell=True with string command
-            cmd_str = ' '.join(f'"{arg}"' if ' ' in str(arg) and '"' not in str(arg) else str(arg) for arg in cmd)
-            self.log(f"Command (Windows shell): {cmd_str[:200]}...")
+            # WINDOWS: Use shell=False with list args (Method 3 - confirmed working!)
+            # Do NOT use cmd.exe /c or shell=True - these fail with mvn.cmd
+
+            self.log(f"Command (Windows): {' '.join(str(x) for x in cmd)[:150]}...")
 
             result = subprocess.run(
-                cmd_str,
+                cmd,  # Use list directly
                 cwd=cwd,
                 capture_output=True,
                 text=True,
                 env=env,
                 timeout=timeout,
-                shell=True,
+                shell=False,  # Critical: shell=False works for mvn.cmd!
                 creationflags=subprocess.CREATE_NO_WINDOW
             )
         else:
-            # On Linux/Mac: Use list command without shell
+            # UNIX: Same method
             self.log(f"Command (Unix): {' '.join(cmd)[:200]}...")
 
             result = subprocess.run(
