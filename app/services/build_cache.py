@@ -1,5 +1,5 @@
 """
-Build cache management
+Build cache management - Fixed for Windows long paths
 """
 
 import json
@@ -40,7 +40,7 @@ class BuildCache:
                 capture_output=True,
                 text=True,
                 timeout=10,
-                shell=True
+                shell=False  # FIXED: Don't use shell
             )
             return result.stdout.strip() if result.returncode == 0 else None
         except:

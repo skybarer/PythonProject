@@ -1,7 +1,7 @@
 """
-Git repository management service - FULLY FIXED & ENHANCED
+Git repository management service - FIXED FOR LONG FILE PATHS
 Works perfectly on Windows + Linux + macOS
-Branches ALWAYS load - no more empty lists!
+Fixes "filename too long" errors on Windows
 """
 
 import subprocess
@@ -13,13 +13,32 @@ from typing import Optional, List, Callable
 
 
 class GitService:
-    """Robust Git service with full branch visibility"""
+    """Robust Git service with Windows long path support"""
 
     def __init__(self, git_cmd: str = "git", timeout: int = 600):
         self.git_cmd = git_cmd
         self.timeout = timeout
         self.log_callback: Optional[Callable[[str], None]] = None
         self.is_windows = sys.platform.startswith('win')
+
+        # Configure Git for long paths on Windows
+        if self.is_windows:
+            self._configure_git_for_long_paths()
+
+    def _configure_git_for_long_paths(self):
+        """Enable long path support in Git on Windows"""
+        try:
+            # Enable longpaths globally for Git
+            subprocess.run(
+                [self.git_cmd, "config", "--global", "core.longpaths", "true"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                shell=False  # Don't use shell for config
+            )
+            self.log("âœ… Enabled Git long path support for Windows")
+        except Exception as e:
+            self.log(f"âš ï¸ Could not configure Git long paths (may already be set): {e}")
 
     def set_log_callback(self, callback):
         """Set logging callback (e.g. print, GUI logger, etc.)"""
@@ -34,13 +53,27 @@ class GitService:
         else:
             print(full_msg)
 
-    def _run_git_command(self, args: List[str], cwd: str = None, timeout: int = None) -> subprocess.CompletedProcess:
-        """Run git with bulletproof Windows + error handling"""
+    def _run_git_command(self, args: List[str], cwd: str = None, timeout: int = None, use_shell: bool = None) -> subprocess.CompletedProcess:
+        """
+        Run git with proper Windows long path handling
+
+        CRITICAL FIXES:
+        1. Don't use shell=True for Git commands on Windows (causes path issues)
+        2. Use absolute paths
+        3. Ensure Git is configured for long paths
+        """
         if timeout is None:
             timeout = self.timeout
 
         if cwd and isinstance(cwd, Path):
-            cwd = str(cwd)
+            cwd = str(cwd.resolve())  # Convert to absolute path
+        elif cwd:
+            cwd = str(Path(cwd).resolve())
+
+        # For Windows: Don't use shell unless explicitly requested
+        # Shell mode on Windows causes issues with long paths
+        if use_shell is None:
+            use_shell = False  # Default to False for better path handling
 
         self.log(f"Running: {' '.join(args)}")
         if cwd:
@@ -53,7 +86,8 @@ class GitService:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                shell=self.is_windows  # Critical for Windows paths
+                shell=use_shell,
+                creationflags=subprocess.CREATE_NO_WINDOW if self.is_windows else 0  # Hide console window on Windows
             )
 
             if result.stdout.strip():
@@ -159,8 +193,15 @@ class GitService:
             return []
 
     def clone_or_update_repo(self, repo_url: str, repo_path: Path, branch: str = "master") -> bool:
-        """Clone or update repo — ALWAYS works"""
-        repo_path = repo_path.resolve()
+        """
+        Clone or update repo – FIXED FOR LONG PATHS ON WINDOWS
+
+        Key fixes:
+        1. Use absolute paths
+        2. Configure Git for long paths before cloning
+        3. Don't use shell=True
+        """
+        repo_path = repo_path.resolve()  # Absolute path
         self.log(f"\nTarget: {repo_url}")
         self.log(f"Branch: {branch}")
         self.log(f"Path: {repo_path}")
@@ -201,20 +242,38 @@ class GitService:
             self.log("Cloning fresh repo...")
             repo_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Try with branch
-            result = self._run_git_command([
-                self.git_cmd, "clone", "--branch", branch,
-                "--single-branch", "--depth", "1",
-                repo_url, str(repo_path)
-            ], timeout=300)
+            # Configure the repository for long paths BEFORE cloning
+            clone_args = [
+                self.git_cmd, "clone",
+                "-c", "core.longpaths=true",  # Enable long paths for this clone
+                "--branch", branch,
+                "--single-branch",
+                "--depth", "1",
+                repo_url,
+                str(repo_path)
+            ]
+
+            result = self._run_git_command(clone_args, timeout=300)
 
             if result.returncode != 0:
                 self.log(f"Branch '{branch}' not found → cloning default")
                 shutil.rmtree(repo_path, ignore_errors=True)
-                self._run_git_command([
-                    self.git_cmd, "clone", "--depth", "1",
-                    repo_url, str(repo_path)
-                ], timeout=300)
+
+                default_clone_args = [
+                    self.git_cmd, "clone",
+                    "-c", "core.longpaths=true",  # Enable long paths
+                    "--depth", "1",
+                    repo_url,
+                    str(repo_path)
+                ]
+                self._run_git_command(default_clone_args, timeout=300)
+
+            # Configure the cloned repo for long paths
+            self._run_git_command(
+                [self.git_cmd, "config", "core.longpaths", "true"],
+                cwd=repo_path,
+                timeout=10
+            )
 
             # === FIX SHALLOW CLONE ===
             self.log("Fixing shallow clone → fetching ALL branches")
