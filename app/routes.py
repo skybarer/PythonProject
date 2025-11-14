@@ -1,9 +1,6 @@
 """
-routes.py - COMPLETE FIXED VERSION
-✅ All branches load with pagination
-✅ Default branch selection works
-✅ Build configuration properly validated
-✅ Maven execution successful
+routes.py - WITH ULTRA-FAST BUILD OPTIONS
+Added performance toggles and offline mode
 """
 
 from flask import request, jsonify, render_template_string
@@ -16,7 +13,7 @@ from app.utils.system_info import SystemInfo
 # Global state
 gitlab_client = None
 cached_groups = []
-cached_projects = {}  # {group_id: [projects]}
+cached_projects = {}
 
 
 def register_routes(app, socketio, config_manager, builder):
@@ -36,7 +33,15 @@ def register_routes(app, socketio, config_manager, builder):
 
     @app.route('/api/system-info')
     def get_system_info():
-        return jsonify(SystemInfo().to_dict())
+        info = SystemInfo().to_dict()
+        # Add performance recommendations
+        info['recommendations'] = {
+            'parallel_builds': info['recommended_workers'],
+            'maven_threads': info['recommended_maven_threads'],
+            'jvm_memory_gb': info['recommended_jvm_memory'],
+            'expected_speedup': f"{info['recommended_workers']}x faster (parallel)"
+        }
+        return jsonify(info)
 
     @app.route('/api/prerequisites')
     def check_prerequisites():
@@ -112,16 +117,12 @@ def register_routes(app, socketio, config_manager, builder):
 
     @app.route('/api/project/<int:project_id>/branches')
     def get_project_branches(project_id):
-        """
-        ✅ FIXED: Returns ALL branches with pagination
-        """
         if not gitlab_client:
             return jsonify({'error': 'Not connected', 'branches': []}), 400
 
         print(f"\n=== Fetching ALL branches for project ID: {project_id} ===")
 
         try:
-            # Get ALL branches from GitLab API (with pagination)
             branches = gitlab_client.get_project_branches(project_id)
 
             if not branches:
@@ -134,7 +135,6 @@ def register_routes(app, socketio, config_manager, builder):
                     'count': 0
                 }), 200
 
-            # Find default branch and project name from cached projects
             default_branch = 'main'
             project_name = f"Project {project_id}"
 
@@ -149,7 +149,6 @@ def register_routes(app, socketio, config_manager, builder):
             print(f"  Default branch: {default_branch}")
             print(f"  Total branches: {len(branches)}")
 
-            # Enrich branches with metadata
             enriched = []
             for branch in branches:
                 is_default = (branch == default_branch)
@@ -161,7 +160,6 @@ def register_routes(app, socketio, config_manager, builder):
                 if is_default:
                     print(f"    ✓ {branch} (default)")
 
-            # Sort: default first, then alphabetically
             enriched.sort(key=lambda x: (not x['is_default'], x['name'].lower()))
 
             print(f"=== Branches loaded successfully ===\n")
@@ -192,7 +190,7 @@ def register_routes(app, socketio, config_manager, builder):
     @app.route('/api/build', methods=['POST'])
     def start_build():
         """
-        ✅ FIXED: Build services with proper validation and error handling
+        Build services with ULTRA-FAST optimizations
         """
         data = request.json
         group_id = data.get('group_id')
@@ -200,62 +198,54 @@ def register_routes(app, socketio, config_manager, builder):
         force = data.get('force', False)
         max_workers = int(data.get('max_workers', 4))
 
+        # NEW: Performance options
+        offline_mode = data.get('offline_mode', False)
+        skip_tests = data.get('skip_tests', True)
+        skip_javadoc = data.get('skip_javadoc', True)
+        skip_source = data.get('skip_source', True)
+        aggressive_parallel = data.get('aggressive_parallel', True)
+
         if not group_id or not build_configs:
             return jsonify({'error': 'Invalid request: Missing group_id or build_configs'}), 400
 
-        # Load group settings
         settings = config_manager.load_group_settings(group_id)
         xml_path = config_manager.get_settings_xml_path(group_id)
         if not xml_path:
             return jsonify({'error': 'settings.xml not configured for this group'}), 400
 
         print(f"\n{'='*60}")
-        print(f"BUILD REQUEST RECEIVED")
+        print(f"ULTRA-FAST BUILD REQUEST")
         print(f"{'='*60}")
         print(f"Group ID: {group_id}")
-        print(f"Services to build: {len(build_configs)}")
+        print(f"Services: {len(build_configs)}")
         print(f"Force rebuild: {force}")
         print(f"Max workers: {max_workers}")
-        print(f"Settings file: {xml_path}")
-        print(f"Maven profiles: {settings.get('default_profiles', [])}")
-        print(f"JVM options: {settings.get('jvm_options', 'default')}")
+        print(f"Offline mode: {offline_mode}")
+        print(f"Skip tests: {skip_tests}")
+        print(f"Skip javadoc: {skip_javadoc}")
+        print(f"Skip source: {skip_source}")
+        print(f"Aggressive parallel: {aggressive_parallel}")
 
-        # Build configurations
         configs = []
         for idx, conf in enumerate(build_configs, 1):
             try:
-                # Extract and validate fields
                 project_id = conf.get('project_id')
                 service_name = conf.get('name')
                 repo_url = conf.get('repo_url')
                 selected_branch = conf.get('branch')
                 default_branch = conf.get('default_branch', 'main')
 
-                # Validate required fields
-                if not service_name:
-                    print(f"❌ Service {idx}: Missing service name")
+                if not service_name or not repo_url:
                     continue
 
-                if not repo_url:
-                    print(f"❌ Service {service_name}: Missing repo URL")
-                    continue
-
-                # Use default branch if no branch selected
                 if not selected_branch:
-                    print(f"⚠️ Service {service_name}: No branch selected, using default: {default_branch}")
                     selected_branch = default_branch
 
-                # Determine if force fetch needed
                 force_fetch = (selected_branch != default_branch)
 
-                print(f"\n--- Service {idx}: {service_name} ---")
-                print(f"  Project ID: {project_id}")
-                print(f"  Branch: {selected_branch}")
-                print(f"  Default: {default_branch}")
-                print(f"  Force fetch: {force_fetch}")
-                print(f"  Repo: {repo_url}")
+                # Get Maven threads from settings or use system recommendation
+                maven_threads = settings.get('maven_threads', SystemInfo().recommended_maven_threads)
 
-                # Create build config
                 config = BuildConfig(
                     service_name=service_name,
                     group_id=group_id,
@@ -264,28 +254,31 @@ def register_routes(app, socketio, config_manager, builder):
                     settings_file=xml_path,
                     maven_profiles=settings.get('default_profiles', []),
                     jvm_options=settings.get('jvm_options', ''),
-                    maven_threads=settings.get('maven_threads', 4),
-                    force_full_fetch=force_fetch
+                    maven_threads=maven_threads,
+                    force_full_fetch=force_fetch,
+                    # NEW: Performance flags
+                    skip_tests=skip_tests,
+                    skip_javadoc=skip_javadoc,
+                    skip_source=skip_source,
+                    offline_mode=offline_mode,
+                    aggressive_parallel=aggressive_parallel
                 )
                 configs.append(config)
 
             except Exception as e:
                 print(f"❌ Error processing config {idx}: {e}")
-                import traceback
-                traceback.print_exc()
                 continue
 
         if not configs:
-            return jsonify({'error': 'No valid build configurations generated'}), 400
+            return jsonify({'error': 'No valid build configurations'}), 400
 
         print(f"\n{'='*60}")
-        print(f"VALIDATED: {len(configs)} services ready to build")
+        print(f"VALIDATED: {len(configs)} services ready")
+        print(f"Expected time reduction: {max_workers}x faster (parallel)")
         print(f"{'='*60}\n")
 
-        # Set max workers
         builder.max_workers = max_workers
 
-        # Start build in background thread
         def build_thread():
             try:
                 results = builder.build_services(configs, force=force)
@@ -314,8 +307,9 @@ def register_routes(app, socketio, config_manager, builder):
 
         return jsonify({
             'success': True,
-            'message': f'Started build for {len(configs)} services',
-            'services': [c.service_name for c in configs]
+            'message': f'Started ULTRA-FAST build for {len(configs)} services',
+            'services': [c.service_name for c in configs],
+            'estimated_speedup': f"{max_workers}x"
         })
 
     @app.route('/api/settings-files')

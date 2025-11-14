@@ -4,12 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="c948cf49-a089-46a6-9a15-c86bd8a89e5c" name="Changes" comment="routes updated for branch issues">
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/services/build_cache.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/build_cache.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/services/git_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/app/services/git_service.py" afterDir="false" />
-    </list>
+    <list default="true" id="c948cf49-a089-46a6-9a15-c86bd8a89e5c" name="Changes" comment="updated git service" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -147,9 +142,21 @@
     </task>
     <servers />
   </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="template file updated" />
     <MESSAGE value="routes updated for branch issues" />
-    <option name="LAST_COMMIT_MESSAGE" value="routes updated for branch issues" />
+    <MESSAGE value="updated git service" />
+    <option name="LAST_COMMIT_MESSAGE" value="updated git service" />
   </component>
 </project>
